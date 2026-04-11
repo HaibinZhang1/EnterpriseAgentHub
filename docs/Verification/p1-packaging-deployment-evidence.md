@@ -32,6 +32,7 @@ The gate writes:
 | Docker legacy config | `docker compose -f infra/docker-compose.legacy.yml config` | Legacy compose validates when present. | W2/W6 |
 | Deploy script syntax | `bash -n deploy/server-up.sh deploy/server-down.sh deploy/server-check.sh deploy/load-offline-images.sh` | Deployment shell scripts parse. | W2/W6 |
 | W6 matrix self-test | `node --test tests/smoke/p1-acceptance-matrix.test.mjs` | Verification config and smoke/e2e matrix remain complete. | W6 |
+| Tracked generated artifacts | Built-in `tracked-generated-artifacts` gate in `p1-verify.mjs` | No tracked `node_modules/**`, package `dist/**`, app build outputs, or coverage outputs remain in final integration. | W6/leader |
 
 ## Acceptance coverage required before sign-off
 
@@ -64,4 +65,4 @@ The smoke/e2e spec in `tests/smoke/p1-e2e-smoke-spec.json` covers the required P
 
 ## Current W6 baseline
 
-At creation time, this W6 worktree had no root `package.json`, no `apps/**`, no `packages/**`, no `infra/**`, and no `deploy/**`. Use non-strict mode during parallel development to produce a pending report, then use strict mode after integration to fail on any missing product-lane artifact or failing command.
+At creation time, this W6 worktree had no root `package.json`, no `apps/**`, no `packages/**`, no `infra/**`, and no `deploy/**`. Use non-strict mode during parallel development to produce a pending report, then use strict mode after integration to fail on any missing product-lane artifact, failing command, or tracked generated artifact such as `node_modules/` or `packages/shared-contracts/dist/`.

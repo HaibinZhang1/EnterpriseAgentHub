@@ -25,10 +25,6 @@ function relativeStatusPath(filePath) {
   return path.relative(repoRoot, filePath) || '.';
 }
 
-function allPathsExist(paths = []) {
-  return paths.every((candidate) => existsSync(path.resolve(repoRoot, candidate)));
-}
-
 function truncate(text, limit = 4000) {
   if (!text) return '';
   return text.length > limit ? `${text.slice(0, limit)}\n...[truncated ${text.length - limit} chars]` : text;
@@ -103,6 +99,33 @@ function checkArtifact(check) {
   };
 }
 
+function checkGeneratedArtifacts(check) {
+  const patterns = check.disallowedGlobs ?? [];
+  const result = spawnSync('git', ['ls-files', '--', ...patterns], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: check.timeoutMs ?? 30_000,
+    maxBuffer: 1024 * 1024,
+  });
+  const trackedPaths = result.status === 0
+    ? result.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
+    : [];
+
+  return {
+    id: check.id,
+    label: check.label,
+    type: 'generated-artifact',
+    status: result.status === 0 && trackedPaths.length === 0 ? 'pass' : 'fail',
+    requiredForRelease: Boolean(check.requiredForRelease),
+    owner: check.owner,
+    disallowedGlobs: patterns,
+    trackedPaths,
+    remediation: check.remediation,
+    exitCode: result.status,
+    stderr: truncate(result.stderr),
+  };
+}
+
 function markdownReport(report) {
   const lines = [];
   lines.push(`# ${report.name}`);
@@ -114,6 +137,7 @@ function markdownReport(report) {
   lines.push('## Summary');
   lines.push('');
   lines.push(`- Artifact checks: ${report.summary.artifacts.pass} pass, ${report.summary.artifacts.pending} pending, ${report.summary.artifacts.fail} fail`);
+  lines.push(`- Generated artifact checks: ${report.summary.generatedArtifacts.pass} pass, ${report.summary.generatedArtifacts.pending} pending, ${report.summary.generatedArtifacts.fail} fail`);
   lines.push(`- Command checks: ${report.summary.commands.pass} pass, ${report.summary.commands.pending} pending, ${report.summary.commands.fail} fail`);
   lines.push(`- Acceptance scenarios covered by spec: ${report.acceptance.covered}/${report.acceptance.expected}`);
   lines.push('');
@@ -123,6 +147,15 @@ function markdownReport(report) {
   lines.push('| --- | --- | --- | --- |');
   for (const check of report.artifacts) {
     lines.push(`| ${check.status} | ${check.id} | ${check.owner ?? ''} | \`${check.path}\` |`);
+  }
+  lines.push('');
+  lines.push('## Generated artifact checks');
+  lines.push('');
+  lines.push('| Status | ID | Disallowed globs | Tracked paths |');
+  lines.push('| --- | --- | --- | --- |');
+  for (const check of report.generatedArtifacts) {
+    const tracked = check.trackedPaths?.length ? check.trackedPaths.map((trackedPath) => `\`${trackedPath}\``).join('<br>') : '';
+    lines.push(`| ${check.status} | ${check.id} | ${(check.disallowedGlobs ?? []).map((glob) => `\`${glob}\``).join('<br>')} | ${tracked} |`);
   }
   lines.push('');
   lines.push('## Command checks');
@@ -208,6 +241,7 @@ const smokeSpec = existsSync(smokeSpecPath) ? readJson(smokeSpecPath) : { scenar
 const smokeScenarioIds = new Set((smokeSpec.scenarios ?? []).map((scenario) => scenario.id));
 
 const artifacts = (config.artifactChecks ?? []).map(checkArtifact);
+const generatedArtifacts = (config.generatedArtifactChecks ?? []).map(checkGeneratedArtifacts);
 const commands = (config.commands ?? []).map(runCommand);
 const acceptanceScenarios = (config.acceptanceScenarioIds ?? []).map((id) => ({
   id,
@@ -216,7 +250,8 @@ const acceptanceScenarios = (config.acceptanceScenarioIds ?? []).map((id) => ({
 const missingAcceptance = acceptanceScenarios.filter((scenario) => !scenario.covered);
 const requiredArtifacts = artifacts.filter((check) => check.requiredForRelease);
 const requiredCommands = commands.filter((check) => check.requiredForRelease);
-const hasFailure = [...artifacts, ...commands].some((check) => check.status === 'fail') || missingAcceptance.length > 0;
+const generatedArtifactFailures = generatedArtifacts.filter((check) => check.status === 'fail');
+const hasFailure = [...artifacts, ...generatedArtifacts, ...commands].some((check) => check.status === 'fail') || missingAcceptance.length > 0;
 const hasStrictPending = strict && (
   requiredArtifacts.some((check) => check.status === 'pending') ||
   requiredCommands.some((check) => check.status === 'pending')
@@ -230,9 +265,11 @@ const report = {
   overallStatus: hasFailure || hasStrictPending ? 'fail' : 'pass',
   summary: {
     artifacts: summarize(artifacts),
+    generatedArtifacts: summarize(generatedArtifacts),
     commands: summarize(commands),
   },
   artifacts,
+  generatedArtifacts,
   commands,
   acceptance: {
     expected: acceptanceScenarios.length,
@@ -254,6 +291,7 @@ if (jsonOnly) {
   console.log(`Markdown report: ${relativeStatusPath(markdownPath)}`);
   console.log(`JSON report: ${relativeStatusPath(jsonPath)}`);
   console.log(`Artifacts: ${report.summary.artifacts.pass} pass, ${report.summary.artifacts.pending} pending, ${report.summary.artifacts.fail} fail`);
+  console.log(`Generated artifacts: ${report.summary.generatedArtifacts.pass} pass, ${report.summary.generatedArtifacts.pending} pending, ${report.summary.generatedArtifacts.fail} fail`);
   console.log(`Commands: ${report.summary.commands.pass} pass, ${report.summary.commands.pending} pending, ${report.summary.commands.fail} fail`);
   console.log(`Acceptance coverage: ${report.acceptance.covered}/${report.acceptance.expected}`);
 }

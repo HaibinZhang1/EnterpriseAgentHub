@@ -100,7 +100,9 @@
       "label": "Workspace TypeScript typecheck",
       "command": "npm run typecheck",
       "cwd": ".",
-      "whenPathExists": ["package.json"],
+      "whenPathExists": [
+        "package.json"
+      ],
       "requiredForRelease": true
     },
     {
@@ -108,7 +110,9 @@
       "label": "Workspace test suite",
       "command": "npm test",
       "cwd": ".",
-      "whenPathExists": ["package.json"],
+      "whenPathExists": [
+        "package.json"
+      ],
       "requiredForRelease": true
     },
     {
@@ -116,7 +120,10 @@
       "label": "API package tests",
       "command": "npm test --workspace apps/api",
       "cwd": ".",
-      "whenPathExists": ["package.json", "apps/api/package.json"],
+      "whenPathExists": [
+        "package.json",
+        "apps/api/package.json"
+      ],
       "requiredForRelease": true
     },
     {
@@ -124,7 +131,10 @@
       "label": "Desktop frontend tests",
       "command": "npm test --workspace apps/desktop",
       "cwd": ".",
-      "whenPathExists": ["package.json", "apps/desktop/package.json"],
+      "whenPathExists": [
+        "package.json",
+        "apps/desktop/package.json"
+      ],
       "requiredForRelease": true
     },
     {
@@ -132,7 +142,9 @@
       "label": "Tauri Rust cargo check",
       "command": "cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
       "cwd": ".",
-      "whenPathExists": ["apps/desktop/src-tauri/Cargo.toml"],
+      "whenPathExists": [
+        "apps/desktop/src-tauri/Cargo.toml"
+      ],
       "requiredForRelease": true
     },
     {
@@ -140,7 +152,9 @@
       "label": "Tauri Rust cargo test",
       "command": "cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml",
       "cwd": ".",
-      "whenPathExists": ["apps/desktop/src-tauri/Cargo.toml"],
+      "whenPathExists": [
+        "apps/desktop/src-tauri/Cargo.toml"
+      ],
       "requiredForRelease": true
     },
     {
@@ -148,7 +162,10 @@
       "label": "Tool Adapter fixture transform checks",
       "command": "npm test --workspace packages/tool-adapter-fixtures",
       "cwd": ".",
-      "whenPathExists": ["package.json", "packages/tool-adapter-fixtures/package.json"],
+      "whenPathExists": [
+        "package.json",
+        "packages/tool-adapter-fixtures/package.json"
+      ],
       "requiredForRelease": true
     },
     {
@@ -156,7 +173,9 @@
       "label": "Docker Compose production config validation",
       "command": "docker compose -f infra/docker-compose.prod.yml config",
       "cwd": ".",
-      "whenPathExists": ["infra/docker-compose.prod.yml"],
+      "whenPathExists": [
+        "infra/docker-compose.prod.yml"
+      ],
       "requiredForRelease": true
     },
     {
@@ -164,7 +183,9 @@
       "label": "Docker Compose legacy config validation",
       "command": "docker compose -f infra/docker-compose.legacy.yml config",
       "cwd": ".",
-      "whenPathExists": ["infra/docker-compose.legacy.yml"],
+      "whenPathExists": [
+        "infra/docker-compose.legacy.yml"
+      ],
       "requiredForRelease": false
     },
     {
@@ -172,7 +193,12 @@
       "label": "Deployment shell script syntax",
       "command": "bash -n deploy/server-up.sh deploy/server-down.sh deploy/server-check.sh deploy/load-offline-images.sh",
       "cwd": ".",
-      "whenPathExists": ["deploy/server-up.sh", "deploy/server-down.sh", "deploy/server-check.sh", "deploy/load-offline-images.sh"],
+      "whenPathExists": [
+        "deploy/server-up.sh",
+        "deploy/server-down.sh",
+        "deploy/server-check.sh",
+        "deploy/load-offline-images.sh"
+      ],
       "requiredForRelease": true
     },
     {
@@ -180,7 +206,11 @@
       "label": "W6 verification matrix self-test",
       "command": "node --test tests/smoke/p1-acceptance-matrix.test.mjs",
       "cwd": ".",
-      "whenPathExists": ["tests/smoke/p1-acceptance-matrix.test.mjs", "verification/p1-verification.config.json", "tests/smoke/p1-e2e-smoke-spec.json"],
+      "whenPathExists": [
+        "tests/smoke/p1-acceptance-matrix.test.mjs",
+        "verification/p1-verification.config.json",
+        "tests/smoke/p1-e2e-smoke-spec.json"
+      ],
       "requiredForRelease": true
     }
   ],
@@ -198,5 +228,23 @@
     "offline-enable-disable-queue-restart",
     "local-events-idempotent-sync",
     "notifications-read-offline-cache"
+  ],
+  "generatedArtifactChecks": [
+    {
+      "id": "tracked-generated-artifacts",
+      "label": "No generated dependency/build artifacts are tracked",
+      "owner": "worker-6/leader-integration",
+      "requiredForRelease": true,
+      "disallowedGlobs": [
+        "node_modules/**",
+        "*/node_modules/**",
+        "packages/*/dist/**",
+        "apps/*/dist/**",
+        "apps/*/build/**",
+        "coverage/**",
+        "*/coverage/**"
+      ],
+      "remediation": "Remove tracked generated artifacts (for example node_modules/ and packages/shared-contracts/dist/) from the integration branch or explicitly report a leader-owned blocker before release sign-off."
+    }
   ]
 }

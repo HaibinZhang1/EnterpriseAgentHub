@@ -51,3 +51,7 @@ That package-level test must prove:
 ## Current W6 baseline
 
 The repository branch available to Worker 6 at the time this report was created contained only docs and `ui-prototype/`; fixture artifacts were not yet present. The report is therefore a release-gate template plus executable evidence contract, not a final product acceptance sign-off.
+
+## Integration hygiene addendum
+
+The final integration branch must not keep tracked generated artifacts such as `node_modules/` or package `dist/` outputs. The W6 verification runner includes `tracked-generated-artifacts` to fail release sign-off if those paths are tracked; cleanup remains leader-owned if the artifacts land from another worker lane.

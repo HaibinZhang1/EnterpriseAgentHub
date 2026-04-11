@@ -77,3 +77,19 @@ test('smoke/e2e spec covers required P1 acceptance scenarios', () => {
     );
   }
 });
+
+
+test('verification config rejects tracked generated dependency/build artifacts', () => {
+  const config = readJson('verification/p1-verification.config.json');
+  assert.equal(Array.isArray(config.generatedArtifactChecks), true);
+  const generatedCheck = config.generatedArtifactChecks.find((check) => check.id === 'tracked-generated-artifacts');
+  assert.ok(generatedCheck, 'missing tracked-generated-artifacts check');
+
+  for (const pattern of ['node_modules/**', '*/node_modules/**', 'packages/*/dist/**']) {
+    assert.equal(
+      generatedCheck.disallowedGlobs.includes(pattern),
+      true,
+      `missing generated artifact glob: ${pattern}`,
+    );
+  }
+});
