@@ -83,6 +83,15 @@ CREATE TABLE IF NOT EXISTS local_notifications (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'syncing', 'failed')),
+  last_synced_at TEXT,
+  last_error TEXT,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS store_metadata (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -93,3 +102,4 @@ CREATE INDEX IF NOT EXISTS idx_enabled_targets_skill ON enabled_targets(skill_id
 CREATE INDEX IF NOT EXISTS idx_enabled_targets_status ON enabled_targets(status);
 CREATE INDEX IF NOT EXISTS idx_offline_event_queue_status ON offline_event_queue(status, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_local_notifications_read ON local_notifications(read_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_sync_state_status ON sync_state(status, updated_at);

@@ -11,14 +11,26 @@ pub const DEFAULT_MAX_PACKAGE_FILES: usize = 100;
 
 #[derive(Debug)]
 pub enum StoreError {
-    Io { context: &'static str, source: io::Error },
+    Io {
+        context: &'static str,
+        source: io::Error,
+    },
     InvalidSkillId(String),
     InvalidVersion(String),
     PackageNotDirectory(PathBuf),
     PackageMissingSkillManifest(PathBuf),
-    PackageTooLarge { actual_bytes: u64, max_bytes: u64 },
-    PackageTooManyFiles { actual_files: usize, max_files: usize },
-    PackageHashMismatch { expected: String, actual: String },
+    PackageTooLarge {
+        actual_bytes: u64,
+        max_bytes: u64,
+    },
+    PackageTooManyFiles {
+        actual_files: usize,
+        max_files: usize,
+    },
+    PackageHashMismatch {
+        expected: String,
+        actual: String,
+    },
     CentralStoreMissing(PathBuf),
     IntegrationRequired(&'static str),
 }
@@ -29,20 +41,39 @@ impl fmt::Display for StoreError {
             Self::Io { context, source } => write!(f, "{context}: {source}"),
             Self::InvalidSkillId(value) => write!(f, "invalid skillID: {value}"),
             Self::InvalidVersion(value) => write!(f, "invalid version: {value}"),
-            Self::PackageNotDirectory(path) => write!(f, "package path is not a directory: {}", path.display()),
+            Self::PackageNotDirectory(path) => {
+                write!(f, "package path is not a directory: {}", path.display())
+            }
             Self::PackageMissingSkillManifest(path) => {
                 write!(f, "package is missing SKILL.md: {}", path.display())
             }
-            Self::PackageTooLarge { actual_bytes, max_bytes } => {
-                write!(f, "package is {actual_bytes} bytes, above {max_bytes} byte limit")
+            Self::PackageTooLarge {
+                actual_bytes,
+                max_bytes,
+            } => {
+                write!(
+                    f,
+                    "package is {actual_bytes} bytes, above {max_bytes} byte limit"
+                )
             }
-            Self::PackageTooManyFiles { actual_files, max_files } => {
-                write!(f, "package has {actual_files} files, above {max_files} file limit")
+            Self::PackageTooManyFiles {
+                actual_files,
+                max_files,
+            } => {
+                write!(
+                    f,
+                    "package has {actual_files} files, above {max_files} file limit"
+                )
             }
             Self::PackageHashMismatch { expected, actual } => {
-                write!(f, "package hash mismatch: expected {expected}, actual {actual}")
+                write!(
+                    f,
+                    "package hash mismatch: expected {expected}, actual {actual}"
+                )
             }
-            Self::CentralStoreMissing(path) => write!(f, "Central Store path missing: {}", path.display()),
+            Self::CentralStoreMissing(path) => {
+                write!(f, "Central Store path missing: {}", path.display())
+            }
             Self::IntegrationRequired(message) => f.write_str(message),
         }
     }
@@ -93,10 +124,17 @@ pub struct InstalledPackage {
 }
 
 pub fn default_central_store_root(app_data_dir: impl AsRef<Path>) -> PathBuf {
-    app_data_dir.as_ref().join("EnterpriseAgentHub").join("central-store")
+    app_data_dir
+        .as_ref()
+        .join("EnterpriseAgentHub")
+        .join("central-store")
 }
 
-pub fn skill_version_dir(central_store_root: impl AsRef<Path>, skill_id: &str, version: &str) -> StoreResult<PathBuf> {
+pub fn skill_version_dir(
+    central_store_root: impl AsRef<Path>,
+    skill_id: &str,
+    version: &str,
+) -> StoreResult<PathBuf> {
     validate_path_segment(skill_id).map_err(|_| StoreError::InvalidSkillId(skill_id.to_owned()))?;
     validate_path_segment(version).map_err(|_| StoreError::InvalidVersion(version.to_owned()))?;
     Ok(central_store_root
@@ -126,7 +164,9 @@ pub fn validate_skill_package_dir(
     let mut tree_hasher = Sha256::new();
 
     for file in files.iter() {
-        let relative = file.strip_prefix(package_dir).expect("collected path is below package dir");
+        let relative = file
+            .strip_prefix(package_dir)
+            .expect("collected path is below package dir");
         tree_hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
         tree_hasher.update(&[0]);
 
@@ -186,7 +226,11 @@ pub fn install_or_replace_package(
     version: &str,
     expected_sha256: Option<&str>,
 ) -> StoreResult<InstalledPackage> {
-    let validation = validate_skill_package_dir(package_dir.as_ref(), expected_sha256, PackageLimits::default())?;
+    let validation = validate_skill_package_dir(
+        package_dir.as_ref(),
+        expected_sha256,
+        PackageLimits::default(),
+    )?;
     let target_dir = skill_version_dir(central_store_root.as_ref(), skill_id, version)?;
     let parent = target_dir.parent().expect("skill version dir has parent");
     fs::create_dir_all(parent).map_err(|source| StoreError::Io {
@@ -244,7 +288,8 @@ pub fn uninstall_central_store_package(
     let target = match version {
         Some(version) => skill_version_dir(central_store_root, skill_id, version)?,
         None => {
-            validate_path_segment(skill_id).map_err(|_| StoreError::InvalidSkillId(skill_id.to_owned()))?;
+            validate_path_segment(skill_id)
+                .map_err(|_| StoreError::InvalidSkillId(skill_id.to_owned()))?;
             central_store_root.as_ref().join("skills").join(skill_id)
         }
     };

@@ -1,5 +1,6 @@
 pub const P1_INITIAL_MIGRATION_NAME: &str = "0001_p1_local_state";
-pub const P1_INITIAL_MIGRATION_SQL: &str = include_str!("../../sqlite/migrations/0001_p1_local_state.sql");
+pub const P1_INITIAL_MIGRATION_SQL: &str =
+    include_str!("../../sqlite/migrations/0001_p1_local_state.sql");
 
 pub fn ordered_migrations() -> [(&'static str, &'static str); 1] {
     [(P1_INITIAL_MIGRATION_NAME, P1_INITIAL_MIGRATION_SQL)]
@@ -16,6 +17,7 @@ mod tests {
             "enabled_targets",
             "offline_event_queue",
             "local_notifications",
+            "sync_state",
             "store_metadata",
         ] {
             assert!(P1_INITIAL_MIGRATION_SQL.contains(table), "missing {table}");

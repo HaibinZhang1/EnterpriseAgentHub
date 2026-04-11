@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use super::central_store::{install_or_replace_package, uninstall_central_store_package, InstalledPackage, StoreError};
+use super::central_store::{
+    install_or_replace_package, uninstall_central_store_package, InstalledPackage, StoreError,
+};
 use super::models::{EnabledTarget, LocalSkillInstall, LocalStatus, UninstallResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,7 +36,9 @@ pub struct UninstallSkillRequest {
     pub removed_at: String,
 }
 
-pub fn install_skill_package(request: InstallSkillPackageRequest) -> Result<LocalSkillInstall, StoreError> {
+pub fn install_skill_package(
+    request: InstallSkillPackageRequest,
+) -> Result<LocalSkillInstall, StoreError> {
     let installed = install_or_replace_package(
         &request.downloaded_package_dir,
         &request.central_store_root,
@@ -50,7 +54,9 @@ pub fn install_skill_package(request: InstallSkillPackageRequest) -> Result<Loca
     ))
 }
 
-pub fn update_skill_package(request: UpdateSkillPackageRequest) -> Result<LocalSkillInstall, StoreError> {
+pub fn update_skill_package(
+    request: UpdateSkillPackageRequest,
+) -> Result<LocalSkillInstall, StoreError> {
     let installed = install_or_replace_package(
         &request.downloaded_package_dir,
         &request.central_store_root,
@@ -67,7 +73,8 @@ pub fn update_skill_package(request: UpdateSkillPackageRequest) -> Result<LocalS
 }
 
 pub fn uninstall_skill(request: UninstallSkillRequest) -> Result<UninstallResult, StoreError> {
-    let removed = uninstall_central_store_package(&request.central_store_root, &request.skill_id, None)?;
+    let removed =
+        uninstall_central_store_package(&request.central_store_root, &request.skill_id, None)?;
     Ok(UninstallResult {
         skill_id: request.skill_id,
         removed_central_store_path: removed,
