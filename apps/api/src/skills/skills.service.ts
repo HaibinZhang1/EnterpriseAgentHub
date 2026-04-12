@@ -1,4 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { createReadStream, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { Client as MinioClient } from 'minio';
 import {
   DetailAccess,
   DownloadTicketResponse,
@@ -58,10 +62,19 @@ interface PackageRow {
   id: string;
   skill_id: string;
   version: string;
+  bucket: string;
   sha256: string;
   size_bytes: number;
   file_count: number;
   object_key: string;
+  content_type: string;
+}
+
+export interface DownloadablePackage {
+  stream: Readable;
+  contentType: string;
+  contentLength: number;
+  fileName: string;
 }
 
 @Injectable()
@@ -82,7 +95,7 @@ export class SkillsService {
     const row = await this.find(skillID);
     const skill = this.toDetail(row);
     if (skill.detailAccess === 'none') {
-      throw new ForbiddenException('当前用户无权查看该 Skill');
+      throw new ForbiddenException('permission_denied');
     }
 
     if (skill.detailAccess === 'summary') {
@@ -105,7 +118,7 @@ export class SkillsService {
     const version = request.targetVersion ?? row.version;
     const packageRow = await this.database.one<PackageRow>(
       `
-      SELECT p.id, s.skill_id, v.version, p.sha256, p.size_bytes, p.file_count, p.object_key
+      SELECT p.id, s.skill_id, v.version, p.bucket, p.sha256, p.size_bytes, p.file_count, p.object_key, p.content_type
       FROM skills s
       JOIN skill_versions v ON v.id = s.current_version_id
       JOIN skill_packages p ON p.skill_version_id = v.id
@@ -121,12 +134,44 @@ export class SkillsService {
       skillID: packageRow.skill_id,
       version: packageRow.version,
       packageRef: packageRow.id,
-      packageURL: `minio://${packageRow.object_key}?ticket=p1-dev-ticket`,
+      packageURL: `/skill-packages/${encodeURIComponent(packageRow.id)}/download?ticket=p1-dev-ticket`,
       packageHash: packageRow.sha256,
       packageSize: Number(packageRow.size_bytes),
       packageFileCount: Number(packageRow.file_count),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     };
+  }
+
+  async downloadPackage(packageRef: string, ticket?: string): Promise<DownloadablePackage> {
+    if (ticket !== 'p1-dev-ticket') {
+      throw new ForbiddenException('permission_denied');
+    }
+
+    const packageRow = await this.database.one<PackageRow>(
+      `
+      SELECT p.id, s.skill_id, v.version, p.bucket, p.sha256, p.size_bytes, p.file_count, p.object_key, p.content_type
+      FROM skill_packages p
+      JOIN skill_versions v ON v.id = p.skill_version_id
+      JOIN skills s ON s.id = v.skill_id
+      WHERE p.id = $1
+      `,
+      [packageRef],
+    );
+    if (!packageRow) {
+      throw new NotFoundException('package_unavailable');
+    }
+
+    const minioStream = await this.tryReadMinioObject(packageRow);
+    if (minioStream) {
+      return this.packageDownload(packageRow, minioStream);
+    }
+
+    const fallbackPath = this.seedPackagePath(packageRow.object_key);
+    if (fallbackPath && existsSync(fallbackPath)) {
+      return this.packageDownload(packageRow, createReadStream(fallbackPath));
+    }
+
+    throw new NotFoundException('package_unavailable');
   }
 
   async star(userID: string, skillID: string, starred: boolean): Promise<{ skillID: string; starred: boolean; starCount: number }> {
@@ -147,7 +192,7 @@ export class SkillsService {
   private async find(skillID: string): Promise<SkillRow> {
     const row = (await this.loadSkillRows(skillID))[0];
     if (!row) {
-      throw new NotFoundException('Skill 不存在或不可见');
+      throw new NotFoundException('skill_not_found');
     }
     return row;
   }
@@ -190,6 +235,44 @@ export class SkillsService {
       values,
     );
     return result.rows;
+  }
+
+  private async tryReadMinioObject(packageRow: PackageRow): Promise<Readable | null> {
+    if (!process.env.MINIO_ENDPOINT) {
+      return null;
+    }
+
+    const client = new MinioClient({
+      endPoint: process.env.MINIO_ENDPOINT,
+      port: Number(process.env.MINIO_PORT ?? 9000),
+      useSSL: process.env.MINIO_USE_SSL === 'true',
+      accessKey: process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
+      secretKey: process.env.MINIO_SECRET_KEY ?? 'change-me-minio-secret',
+    });
+
+    try {
+      return await client.getObject(packageRow.bucket, packageRow.object_key);
+    } catch {
+      return null;
+    }
+  }
+
+  private seedPackagePath(objectKey: string): string | null {
+    const relativeObjectPath = objectKey.replace(/^skills\//, '');
+    const candidates = [
+      join(__dirname, '..', 'database', 'seeds', 'packages', relativeObjectPath),
+      join(__dirname, '..', '..', 'src', 'database', 'seeds', 'packages', relativeObjectPath),
+    ];
+    return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  }
+
+  private packageDownload(packageRow: PackageRow, stream: Readable): DownloadablePackage {
+    return {
+      stream,
+      contentType: packageRow.content_type,
+      contentLength: Number(packageRow.size_bytes),
+      fileName: `${packageRow.skill_id}-${packageRow.version}.zip`,
+    };
   }
 
   private toSummary(row: SkillRow): SkillSummary {

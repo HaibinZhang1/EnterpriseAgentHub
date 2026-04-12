@@ -44,18 +44,24 @@ Because the Docker daemon socket is absent, this host could validate Compose syn
 
 - Desktop API default is `http://127.0.0.1:3000`, not `/api/v1`.
 - Login stores the real API base URL and Bearer token, then calls `/auth/login` and `/desktop/bootstrap`.
-- Skills, notifications, mark-read, star, and local-events now call real endpoints and throw visible errors on request failure.
+- Skills, notifications, mark-read, star, `download-ticket`, package download, and local-events now call real endpoints and throw visible errors on request failure.
 - Tauri local command mocks are only allowed behind `VITE_P1_ALLOW_TAURI_MOCKS=true`; otherwise browser-only mode fails visibly instead of pretending local Store/Adapter operations succeeded.
+- `codex-review-helper@1.2.0` has a real seed package zip, seed metadata matches the package size/file-count/hash, and the API seed task uploads that object to MinIO when MinIO environment variables are present.
+- Desktop install/update passes the full `downloadTicket` into Tauri. Tauri downloads the package, extracts it, validates SHA-256 and `SKILL.md`, writes Central Store + SQLite, and `list_local_installs` restores state from SQLite after restart.
+- The P1 vertical slice enables only `tool:codex`: Tauri reads the installed Central Store path from SQLite, runs the Codex Adapter distribution, and records `requestedMode`, `resolvedMode`, `fallbackReason`, target path, and a pending local event in SQLite.
 
 ## Packaging Evidence
 
 - Tauri config exists at `apps/desktop/src-tauri/tauri.conf.json`.
 - Rust binary entrypoint exists at `apps/desktop/src-tauri/src/main.rs`.
 - Required command names are registered: `get_local_bootstrap`, `install_skill_package`, `update_skill_package`, `uninstall_skill`, `enable_skill`, `disable_skill`, `list_local_installs`, and `detect_tools`.
+- `install_skill_package`, `update_skill_package`, `enable_skill`, `list_local_installs`, and `get_local_bootstrap` now call the SQLite/Central Store implementation instead of returning integration-required placeholders.
 - Windows installer intent is configured as NSIS with `tauri:build:windows`; actual `.exe` installer generation still requires a Windows-capable Tauri bundling host.
 
 ## Remaining Risks
 
 - Live Docker deployment and `/health status=ok` are not proven on this machine because Docker daemon is not running.
 - Windows `.exe` installer generation is not proven on this macOS host because NSIS bundling is not exposed by the local Tauri CLI.
-- Tauri command registration is in place, but install/update/enable/disable commands still return explicit integration errors until the frontend passes real downloaded package paths and SQLite-backed target state into the Rust Store/Adapter boundary.
+- Linux Docker live deployment remains unproven on this machine until Docker Engine is available and `./deploy/server-up.sh` can start PostgreSQL, Redis, MinIO, API, seed the package object, and return live `/health status=ok`.
+- Windows NSIS `.exe` packaging remains unproven until repeated on a Windows host or CI runner with the `x86_64-pc-windows-msvc` Tauri target.
+- Disable/uninstall and non-Codex targets remain outside this single P1 vertical-slice completion pass.

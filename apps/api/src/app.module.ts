@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { DesktopModule } from './desktop/desktop.module';
@@ -12,6 +13,7 @@ import { SkillsModule } from './skills/skills.module';
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     AuthModule,
+    AdminModule,
     DesktopModule,
     SkillsModule,
     NotificationsModule,

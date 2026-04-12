@@ -1,5 +1,5 @@
-import type { EnabledTarget, LocalEvent, ProjectConfig, RequestedMode, SkillSummary, TargetType, ToolConfig } from "../domain/p1";
-import { seedProjects, seedTools } from "../fixtures/p1SeedData";
+import type { DownloadTicket, EnabledTarget, LocalBootstrap, LocalEvent, LocalSkillInstall, ProjectConfig, RequestedMode, SkillSummary, TargetType, ToolConfig } from "../domain/p1";
+import { seedProjects, seedSkills, seedTools } from "../fixtures/p1SeedData";
 
 type TauriInvoker = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -53,14 +53,34 @@ function buildTarget(skill: SkillSummary, targetType: TargetType, targetID: stri
   };
 }
 
+function seedLocalInstalls(): LocalSkillInstall[] {
+  return seedSkills
+    .filter((skill) => skill.localVersion !== null)
+    .map((skill) => ({
+      skillID: skill.skillID,
+      displayName: skill.displayName,
+      localVersion: skill.localVersion ?? skill.version,
+      localHash: skill.localVersion ? `sha256:local-${skill.skillID}` : skill.version,
+      sourcePackageHash: `sha256:source-${skill.skillID}`,
+      installedAt: skill.lastEnabledAt ?? skill.publishedAt,
+      updatedAt: skill.currentVersionUpdatedAt,
+      localStatus: skill.enabledTargets.length > 0 ? "enabled" : "installed",
+      centralStorePath: `%APPDATA%\\EnterpriseAgentHub\\CentralStore\\${skill.skillID}\\${skill.localVersion ?? skill.version}`,
+      enabledTargets: skill.enabledTargets,
+      hasUpdate: skill.installState === "update_available",
+      isScopeRestricted: skill.isScopeRestricted,
+      canUpdate: skill.canUpdate
+    }));
+}
+
 export interface DesktopBridge {
-  getLocalBootstrap(): Promise<{ tools: ToolConfig[]; projects: ProjectConfig[] }>;
-  installSkillPackage(skill: SkillSummary): Promise<{ localVersion: string }>;
-  updateSkillPackage(skill: SkillSummary): Promise<{ localVersion: string }>;
+  getLocalBootstrap(): Promise<LocalBootstrap>;
+  installSkillPackage(downloadTicket: DownloadTicket): Promise<LocalSkillInstall>;
+  updateSkillPackage(downloadTicket: DownloadTicket): Promise<LocalSkillInstall>;
   uninstallSkill(skillID: string): Promise<{ removedTargetIDs: string[] }>;
   enableSkill(input: { skill: SkillSummary; targetType: TargetType; targetID: string; requestedMode: RequestedMode }): Promise<{ target: EnabledTarget; event: LocalEvent }>;
   disableSkill(input: { skill: SkillSummary; targetID: string }): Promise<{ event: LocalEvent }>;
-  listLocalInstalls(): Promise<SkillSummary[]>;
+  listLocalInstalls(): Promise<LocalSkillInstall[]>;
   refreshToolDetection(): Promise<ToolConfig[]>;
 }
 
@@ -74,31 +94,66 @@ export const desktopBridge: DesktopBridge = {
       await requireInvoke();
     }
     await mockWait();
-    return { tools: seedTools, projects: seedProjects };
+    return {
+      installs: seedLocalInstalls(),
+      tools: seedTools,
+      projects: seedProjects,
+      pendingOfflineEventCount: 0,
+      unreadLocalNotificationCount: 1,
+      centralStorePath: "%APPDATA%\\EnterpriseAgentHub\\CentralStore"
+    };
   },
 
-  async installSkillPackage(skill) {
+  async installSkillPackage(downloadTicket) {
     const invoke = getInvoke();
     if (invoke) {
-      return invoke("install_skill_package", { skillID: skill.skillID, version: skill.version });
+      return invoke("install_skill_package", { downloadTicket });
     }
     if (!allowTauriMocks) {
       await requireInvoke();
     }
     await mockWait(220);
-    return { localVersion: skill.version };
+    return {
+      skillID: downloadTicket.skillID,
+      displayName: downloadTicket.skillID,
+      localVersion: downloadTicket.version,
+      localHash: downloadTicket.packageHash,
+      sourcePackageHash: downloadTicket.packageHash,
+      installedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      localStatus: "installed",
+      centralStorePath: "",
+      enabledTargets: [],
+      hasUpdate: false,
+      isScopeRestricted: false,
+      canUpdate: true
+    };
   },
 
-  async updateSkillPackage(skill) {
+  async updateSkillPackage(downloadTicket) {
     const invoke = getInvoke();
     if (invoke) {
-      return invoke("update_skill_package", { skillID: skill.skillID, version: skill.version });
+      return invoke("update_skill_package", { downloadTicket });
     }
     if (!allowTauriMocks) {
       await requireInvoke();
     }
     await mockWait(220);
-    return { localVersion: skill.version };
+    return {
+      skillID: downloadTicket.skillID,
+      displayName: downloadTicket.skillID,
+      localVersion: downloadTicket.version,
+      localHash: downloadTicket.packageHash,
+      sourcePackageHash: downloadTicket.packageHash,
+      installedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      localStatus: "installed",
+      centralStorePath: "",
+      enabledTargets: [],
+      hasUpdate: false,
+      isScopeRestricted: false,
+      canUpdate: true
+    };
   },
 
   async uninstallSkill(skillID) {
@@ -116,12 +171,30 @@ export const desktopBridge: DesktopBridge = {
   async enableSkill(input) {
     const invoke = getInvoke();
     if (invoke) {
-      return invoke("enable_skill", {
+      const target = await invoke<EnabledTarget>("enable_skill", {
         skillID: input.skill.skillID,
+        version: input.skill.localVersion ?? input.skill.version,
         targetType: input.targetType,
         targetID: input.targetID,
-        requestedMode: input.requestedMode
+        preferredMode: input.requestedMode
       });
+      return {
+        target,
+        event: {
+          eventID: `evt_${crypto.randomUUID()}`,
+          eventType: "enable_result",
+          skillID: input.skill.skillID,
+          version: input.skill.localVersion ?? input.skill.version,
+          targetType: input.targetType,
+          targetID: input.targetID,
+          targetPath: target.targetPath,
+          requestedMode: target.requestedMode,
+          resolvedMode: target.resolvedMode,
+          fallbackReason: target.fallbackReason,
+          occurredAt: target.enabledAt,
+          result: "success"
+        }
+      };
     }
     if (!allowTauriMocks) {
       await requireInvoke();
@@ -184,7 +257,7 @@ export const desktopBridge: DesktopBridge = {
       await requireInvoke();
     }
     await mockWait();
-    return [];
+    return seedLocalInstalls();
   },
 
   async refreshToolDetection() {

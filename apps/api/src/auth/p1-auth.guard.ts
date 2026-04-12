@@ -1,15 +1,22 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
+import { MenuPermission, UserSummary } from '../common/p1-contracts';
+import { AuthService } from './auth.service';
 
-export const P1_TOKEN_PREFIX = 'p1-dev-token';
+export const P1_TOKEN_PREFIX = 'p1-session';
 
 export interface P1AuthenticatedRequest extends Request {
+  p1SessionID?: string;
   p1UserID?: string;
+  p1User?: UserSummary;
+  p1MenuPermissions?: MenuPermission[];
 }
 
 @Injectable()
 export class P1AuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly authService: AuthService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<P1AuthenticatedRequest>();
     const authorization = request.header('authorization') ?? '';
     const [scheme, token] = authorization.split(/\s+/, 2);
@@ -18,12 +25,16 @@ export class P1AuthGuard implements CanActivate {
       throw new UnauthorizedException('unauthenticated');
     }
 
-    const userID = token.slice(P1_TOKEN_PREFIX.length + 1);
-    if (!userID) {
+    const rawToken = token.slice(P1_TOKEN_PREFIX.length + 1);
+    if (!rawToken) {
       throw new UnauthorizedException('unauthenticated');
     }
 
-    request.p1UserID = userID;
+    const session = await this.authService.authenticateAccessToken(rawToken);
+    request.p1SessionID = session.sessionID;
+    request.p1UserID = session.user.userID;
+    request.p1User = session.user;
+    request.p1MenuPermissions = session.menuPermissions;
     return true;
   }
 }

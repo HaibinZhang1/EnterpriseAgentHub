@@ -89,7 +89,7 @@ pub fn uninstall_skill(request: UninstallSkillRequest) -> Result<UninstallResult
 
 pub fn list_local_installs() -> Result<Vec<LocalSkillInstall>, StoreError> {
     Err(StoreError::IntegrationRequired(
-        "list_local_installs requires the application SQLite connection adapter",
+        "list_local_installs is exposed by the Tauri app-level SQLite state command",
     ))
 }
 
@@ -104,12 +104,13 @@ fn local_install_from_package(
     display_name: String,
     timestamp: String,
 ) -> LocalSkillInstall {
+    let source_package_hash = format!("sha256:{}", installed.package_hash);
     LocalSkillInstall {
         skill_id: installed.skill_id,
         display_name,
         local_version: installed.version,
         local_hash: installed.package_hash.clone(),
-        source_package_hash: installed.package_hash,
+        source_package_hash,
         installed_at: timestamp.clone(),
         updated_at: timestamp,
         local_status: LocalStatus::Installed,

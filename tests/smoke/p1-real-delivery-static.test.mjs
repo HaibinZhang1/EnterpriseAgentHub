@@ -33,6 +33,19 @@ test('Tauri packaging config exposes Windows installer intent and command regist
   for (const command of ['get_local_bootstrap', 'install_skill_package', 'enable_skill', 'disable_skill']) {
     assert.match(tauriMain, new RegExp(command));
   }
+  assert.doesNotMatch(tauriMain, /install_skill_package requires/);
+  assert.doesNotMatch(tauriMain, /enable_skill requires/);
+  assert.doesNotMatch(tauriMain, /list_local_installs requires/);
+});
+
+test('Desktop install flow passes download-ticket into Tauri and restores local state from SQLite bootstrap', () => {
+  assert.ok(p1Client.includes('downloadTicket(skill'));
+  assert.match(p1Client, /download-ticket/);
+  assert.match(p1Client, /packageURL: resolveAPIURL/);
+  assert.ok(tauriBridge.includes('install_skill_package", { downloadTicket }'));
+  assert.ok(tauriBridge.includes('update_skill_package", { downloadTicket }'));
+  assert.match(tauriBridge, /preferredMode: input\.requestedMode/);
+  assert.match(readFileSync('apps/desktop/src/state/useP1Workspace.ts', 'utf8'), /mergeLocalInstalls\(remoteSkills,\s*[A-Za-z]+LocalBootstrap\)/);
 });
 
 test('API production image uses compiled migrate and seed scripts instead of ts-node', () => {

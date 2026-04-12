@@ -1,29 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { ConnectionStatus, LocalEventDto, NotificationType, UserSummary } from '../common/p1-contracts';
+import { Injectable } from '@nestjs/common';
+import { BootstrapContextDto, LocalEventDto, NotificationType, UserSummary } from '../common/p1-contracts';
 import { DatabaseService } from '../database/database.service';
+import { PermissionResolverService } from '../auth/permission-resolver.service';
 
-export interface BootstrapResponse {
-  user: UserSummary;
-  connection: {
-    status: ConnectionStatus;
-    serverTime: string;
-    apiVersion: string;
-  };
-  features: {
-    p1Desktop: true;
-    publishSkill: false;
-    reviewWorkbench: false;
-    adminManage: false;
-    mcpManage: false;
-    pluginManage: false;
-  };
-  counts: {
-    installedCount: number;
-    updateAvailableCount: number;
-    unreadNotificationCount: number;
-  };
-  navigation: string[];
-}
+export type BootstrapResponse = BootstrapContextDto;
 
 export interface LocalEventsRequest {
   deviceID?: string;
@@ -39,10 +19,12 @@ export interface LocalEventsResponse {
 
 @Injectable()
 export class DesktopService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly permissionResolver: PermissionResolverService,
+  ) {}
 
-  async bootstrap(userID: string): Promise<BootstrapResponse> {
-    const user = await this.loadUser(userID);
+  async bootstrap(user: UserSummary): Promise<BootstrapResponse> {
     const counts = await this.database.one<{
       unread_count: string;
       update_available_count: string;
@@ -52,7 +34,7 @@ export class DesktopService {
         (SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL) AS unread_count,
         (SELECT count(*) FROM skills WHERE status = 'published' AND visibility_level = 'public_installable') AS update_available_count
       `,
-      [userID],
+      [user.userID],
     );
 
     return {
@@ -62,20 +44,15 @@ export class DesktopService {
         serverTime: new Date().toISOString(),
         apiVersion: 'p1.0',
       },
-      features: {
-        p1Desktop: true,
-        publishSkill: false,
-        reviewWorkbench: false,
-        adminManage: false,
-        mcpManage: false,
-        pluginManage: false,
-      },
+      features: this.permissionResolver.featureFlagsFor(user),
       counts: {
         installedCount: 0,
+        enabledCount: 0,
         updateAvailableCount: Number(counts?.update_available_count ?? 0),
         unreadNotificationCount: Number(counts?.unread_count ?? 0),
       },
-      navigation: ['home', 'market', 'my_installed', 'tools', 'projects', 'notifications', 'settings'],
+      navigation: this.permissionResolver.navigationFor(user),
+      menuPermissions: this.permissionResolver.menuPermissionsFor(user),
     };
   }
 
@@ -144,35 +121,6 @@ export class DesktopService {
             },
           ]
         : [],
-    };
-  }
-
-  private async loadUser(userID: string): Promise<UserSummary> {
-    const user = await this.database.one<{
-      id: string;
-      display_name: string;
-      role: 'normal_user' | 'admin';
-      department_id: string;
-      department_name: string;
-    }>(
-      `
-      SELECT u.id, u.display_name, u.role, u.department_id, d.name AS department_name
-      FROM users u
-      JOIN departments d ON d.id = u.department_id
-      WHERE u.id = $1 AND u.status = 'active'
-      `,
-      [userID],
-    );
-    if (!user) {
-      throw new NotFoundException('用户不存在或不可用');
-    }
-    return {
-      userID: user.id,
-      displayName: user.display_name,
-      role: user.role,
-      departmentID: user.department_id,
-      departmentName: user.department_name,
-      locale: 'zh-CN',
     };
   }
 }

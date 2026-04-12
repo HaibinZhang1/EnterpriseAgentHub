@@ -1,5 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService, LoginRequest, LoginResponse } from './auth.service';
+import { P1AuthenticatedRequest, P1AuthGuard } from './p1-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -10,8 +11,9 @@ export class AuthController {
     return this.authService.login(body);
   }
 
+  @UseGuards(P1AuthGuard)
   @Post('logout')
-  logout(): { ok: true } {
-    return this.authService.logout();
+  logout(@Req() request: P1AuthenticatedRequest): Promise<{ ok: true }> {
+    return this.authService.logout(request.p1SessionID ?? null);
   }
 }
