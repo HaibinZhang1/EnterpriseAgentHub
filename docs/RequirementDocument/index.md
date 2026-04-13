@@ -59,3 +59,4 @@
 | 文档 | 说明 |
 |------|------|
 | [skills_manage.md](skills_manage.md) | 多 AI 工具统一 Skills 管理器设计草案（Central Store 架构） |
+| [../Progress/README.md](../Progress/README.md) | 项目进度归档，汇总 P1 已落地纵向链路、剩余工程收尾项和实机验证缺口 |
