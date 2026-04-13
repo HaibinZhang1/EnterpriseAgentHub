@@ -3,6 +3,7 @@ import test from "node:test";
 import { PendingBackendError, type ProjectConfig, type PublishDraft, type ScanTargetSummary, type SkillSummary, type ToolConfig } from "../src/domain/p1.ts";
 import { prototypeActionClient } from "../src/services/prototypeActionClient.ts";
 import { buildPublishPrecheck, collectInstalledSkillIssues } from "../src/state/useDesktopUIState.ts";
+import { defaultProjectSkillsPath, defaultToolConfigPath } from "../src/utils/platformPaths.ts";
 
 const baseDraft: PublishDraft = {
   submissionType: "publish",
@@ -165,4 +166,19 @@ test("installed skill issues cover local hash drift and unavailable targets", ()
   assert.match(issues.join(" | "), /路径不可用/);
   assert.match(issues.join(" | "), /项目已移除/);
   assert.match(issues.join(" | "), /登记产物不一致/);
+});
+
+test("platform path helpers emit mac-friendly defaults when requested", () => {
+  assert.equal(defaultToolConfigPath("cursor", "macos"), "~/.cursor/cli-config.json");
+  assert.equal(
+    defaultProjectSkillsPath("/Users/demo/EnterpriseAgentHub", "macos"),
+    "/Users/demo/EnterpriseAgentHub/.codex/skills"
+  );
+});
+
+test("platform path helpers preserve windows project suffix conventions", () => {
+  assert.equal(
+    defaultProjectSkillsPath("D:\\workspace\\EnterpriseAgentHub", "windows"),
+    "D:\\workspace\\EnterpriseAgentHub\\.codex\\skills"
+  );
 });

@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 import { AlertTriangle, CheckCircle2, FolderPlus, Plus, RefreshCw, Sparkles, WifiOff, X } from "lucide-react";
 import type { P1WorkspaceState } from "../state/useP1Workspace";
 import type { DesktopUIState } from "../state/useDesktopUIState";
+import { defaultProjectSkillsPath, defaultToolConfigPath, defaultToolSkillsPath } from "../utils/platformPaths";
 import { formatDate } from "./desktopShared";
 
 function ModalFrame({
@@ -140,6 +141,9 @@ function ToolEditorModal({ ui }: { ui: DesktopUIState }) {
     ui.toolDraft.configPath.trim().length > 0 ||
     ui.toolDraft.skillsPath.trim().length > 0;
   const customDirectory = ui.toolDraft.toolID === "custom_directory";
+  const draftToolID = ui.toolDraft.toolID ?? "custom_directory";
+  const configPlaceholder = customDirectory ? "例如 ~/ai-skills/shared/config.json" : defaultToolConfigPath(draftToolID);
+  const skillsPlaceholder = customDirectory ? "例如 ~/ai-skills/shared/skills" : defaultToolSkillsPath(draftToolID);
 
   return (
     <ModalFrame title={editing ? `编辑 ${ui.toolDraft.name}` : "添加自定义工具"} eyebrow="工具路径" onClose={ui.closeModal} narrow>
@@ -152,11 +156,11 @@ function ToolEditorModal({ ui }: { ui: DesktopUIState }) {
         ) : null}
         <label className="field">
           <span>配置路径</span>
-          <input value={ui.toolDraft.configPath} onChange={(event) => ui.setToolDraft((current) => ({ ...current, configPath: event.target.value }))} placeholder="例如 %USERPROFILE%\\.cursor\\settings.json" />
+          <input value={ui.toolDraft.configPath} onChange={(event) => ui.setToolDraft((current) => ({ ...current, configPath: event.target.value }))} placeholder={configPlaceholder} />
         </label>
         <label className="field">
           <span>skills 安装路径</span>
-          <input value={ui.toolDraft.skillsPath} onChange={(event) => ui.setToolDraft((current) => ({ ...current, skillsPath: event.target.value }))} />
+          <input value={ui.toolDraft.skillsPath} onChange={(event) => ui.setToolDraft((current) => ({ ...current, skillsPath: event.target.value }))} placeholder={skillsPlaceholder} />
         </label>
         <label className="toggle-row">
           <span>启用当前工具配置</span>
@@ -184,6 +188,7 @@ function ProjectEditorModal({ ui }: { ui: DesktopUIState }) {
   }
 
   const editing = Boolean(ui.projectDraft.projectID);
+  const skillsPlaceholder = defaultProjectSkillsPath(ui.projectDraft.projectPath);
 
   return (
     <ModalFrame title={editing ? `编辑 ${ui.projectDraft.name}` : "添加项目"} eyebrow="项目配置" onClose={ui.closeModal} narrow>
@@ -198,7 +203,7 @@ function ProjectEditorModal({ ui }: { ui: DesktopUIState }) {
         </label>
         <label className="field">
           <span>skills 安装路径</span>
-          <input value={ui.projectDraft.skillsPath} onChange={(event) => ui.setProjectDraft((current) => ({ ...current, skillsPath: event.target.value }))} />
+          <input value={ui.projectDraft.skillsPath} onChange={(event) => ui.setProjectDraft((current) => ({ ...current, skillsPath: event.target.value }))} placeholder={skillsPlaceholder} />
         </label>
         <label className="toggle-row">
           <span>启用项目级配置</span>

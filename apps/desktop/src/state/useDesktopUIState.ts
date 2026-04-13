@@ -79,7 +79,12 @@ function findSkillScanFinding(workspace: P1WorkspaceState, skillID: string, targ
 function buildTargetDrafts(skill: SkillSummary, workspace: P1WorkspaceState): TargetDraft[] {
   const enabledKeys = new Set(skill.enabledTargets.map((target) => `${target.targetType}:${target.targetID}`));
   const toolDrafts = workspace.tools.map((tool) => {
-    const live = tool.enabled && tool.adapterStatus !== "missing" && tool.adapterStatus !== "invalid" && tool.adapterStatus !== "disabled";
+    const live =
+      tool.enabled &&
+      tool.skillsPath.trim().length > 0 &&
+      tool.adapterStatus !== "missing" &&
+      tool.adapterStatus !== "invalid" &&
+      tool.adapterStatus !== "disabled";
     const scanSummary = findScanSummary(workspace, "tool", tool.toolID);
     const conflictCount = (scanSummary?.counts.conflict ?? 0) + (scanSummary?.counts.unmanaged ?? 0) + (scanSummary?.counts.orphan ?? 0);
     return {
@@ -550,13 +555,21 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   }, [closeModal, toolDraft, workspace]);
 
   const submitProjectDraft = useCallback(async () => {
-    const skillsPath = projectDraft.skillsPath || `${projectDraft.projectPath}\\.codex\\skills`;
-    const validation = await workspace.validateTargetPath(skillsPath);
-    if (!validation.valid && !validation.canCreate) {
+    if (projectDraft.skillsPath.trim().length > 0) {
+      const validation = await workspace.validateTargetPath(projectDraft.skillsPath);
+      if (!validation.valid && !validation.canCreate) {
+        setFlash({
+          tone: "warning",
+          title: "项目路径不可用",
+          body: validation.reason ?? "请修复项目 skills 目录后再保存。"
+        });
+        return;
+      }
+    } else if (!projectDraft.projectPath.trim()) {
       setFlash({
         tone: "warning",
         title: "项目路径不可用",
-        body: validation.reason ?? "请修复项目 skills 目录后再保存。"
+        body: "请先填写项目路径。"
       });
       return;
     }

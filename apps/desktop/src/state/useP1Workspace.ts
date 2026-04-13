@@ -27,6 +27,7 @@ import {
 } from "../fixtures/p1SeedData";
 import { isPermissionError, isUnauthenticatedError, p1Client } from "../services/p1Client";
 import { desktopBridge } from "../services/tauriBridge";
+import { detectDesktopPlatform } from "../utils/platformPaths";
 
 const defaultFilters: MarketFilters = {
   query: "",
@@ -86,6 +87,7 @@ function applyLocalInstallToSkill(skill: SkillSummary, install: LocalSkillInstal
 
 function localSummaryFromInstall(install: LocalSkillInstall): SkillSummary {
   const enabledTargets = normalizeLocalInstallTargets(install);
+  const compatibleSystem = detectDesktopPlatform() === "windows" ? "windows" : "macos";
   return {
     skillID: install.skillID,
     displayName: install.displayName,
@@ -104,7 +106,7 @@ function localSummaryFromInstall(install: LocalSkillInstall): SkillSummary {
     currentVersionUpdatedAt: install.updatedAt,
     publishedAt: install.installedAt,
     compatibleTools: [],
-    compatibleSystems: ["windows"],
+    compatibleSystems: [compatibleSystem],
     tags: ["本机"],
     category: "本地已安装",
     riskLevel: "unknown",
@@ -174,6 +176,7 @@ export function useP1Workspace() {
   const [projects, setProjects] = useState<LocalBootstrap["projects"]>([]);
   const [notifications, setNotifications] = useState<LocalNotification[]>(emptyLocalNotifications);
   const [offlineEvents, setOfflineEvents] = useState<LocalEvent[]>([]);
+  const [localCentralStorePath, setLocalCentralStorePath] = useState("");
   const [filters, setFilters] = useState<MarketFilters>(defaultFilters);
   const [selectedSkillID, setSelectedSkillID] = useState("");
   const [progress, setProgress] = useState<OperationProgress | null>(null);
@@ -207,6 +210,7 @@ export function useP1Workspace() {
     setTools(localBootstrap.tools);
     setProjects(localBootstrap.projects);
     setOfflineEvents(localBootstrap.offlineEvents);
+    setLocalCentralStorePath(localBootstrap.centralStorePath);
     return localBootstrap;
   }, []);
 
@@ -1044,6 +1048,7 @@ export function useP1Workspace() {
     openSkill,
     tools,
     projects,
+    localCentralStorePath,
     scanTargets,
     notifications,
     offlineEvents,

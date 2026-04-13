@@ -8,9 +8,7 @@ use serde_json::json;
 use tauri::{Manager, State};
 
 #[tauri::command]
-fn get_local_bootstrap(
-    state: State<'_, P1LocalState>,
-) -> Result<LocalBootstrapPayload, String> {
+fn get_local_bootstrap(state: State<'_, P1LocalState>) -> Result<LocalBootstrapPayload, String> {
     state.get_local_bootstrap()
 }
 
@@ -133,9 +131,8 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
-            let state = P1LocalState::initialize(app_data_dir).map_err(|message| {
-                std::io::Error::new(std::io::ErrorKind::Other, message)
-            })?;
+            let state = P1LocalState::initialize(app_data_dir)
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::Other, message))?;
             app.manage(state);
             Ok(())
         })
@@ -155,5 +152,10 @@ fn main() {
             list_local_installs
         ])
         .run(tauri::generate_context!())
-        .unwrap_or_else(|error| panic!("failed to run EnterpriseAgentHub Desktop: {}", json!(error.to_string())));
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to run EnterpriseAgentHub Desktop: {}",
+                json!(error.to_string())
+            )
+        });
 }

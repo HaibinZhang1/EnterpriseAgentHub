@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use super::central_store::{
     install_or_replace_package, uninstall_central_store_package, InstalledPackage, StoreError,
 };
-use super::models::{EnabledTarget, EnabledTargetStatus, LocalSkillInstall, LocalStatus, UninstallResult};
+use super::models::{
+    EnabledTarget, EnabledTargetStatus, LocalSkillInstall, LocalStatus, UninstallResult,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallSkillPackageRequest {

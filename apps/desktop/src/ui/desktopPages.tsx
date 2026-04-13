@@ -20,6 +20,7 @@ import type { DesktopUIState } from "../state/useDesktopUIState";
 import { buildPublishPrecheck } from "../state/useDesktopUIState";
 import type { P1WorkspaceState } from "../state/useP1Workspace";
 import { downloadAuthenticatedFile } from "../services/p1Client";
+import { previewCentralStorePath } from "../utils/platformPaths";
 import {
   IMAGE_POOL,
   flattenDepartments,
@@ -1636,7 +1637,7 @@ function SettingsPage({ workspace, ui }: PageProps) {
         </section>
         <section className="panel">
           <h2>Central Store</h2>
-          <p>{workspace.bootstrap.user.locale === "zh-CN" ? "%APPDATA%\\EnterpriseAgentHub\\CentralStore" : "%APPDATA%\\EnterpriseAgentHub\\CentralStore"}</p>
+          <p>{workspace.localCentralStorePath || previewCentralStorePath()}</p>
           <small>前端只展示路径；真实文件写入仍通过 Tauri 命令完成。</small>
         </section>
         <section className="panel">
