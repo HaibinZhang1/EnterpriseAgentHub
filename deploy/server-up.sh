@@ -16,6 +16,8 @@ set -a
 source "$ENV_FILE"
 set +a
 
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-enterprise-agent-hub}"
+
 "$ROOT_DIR/deploy/server-check.sh"
 
 if [[ "${COMPOSE_IMPL:-v2}" == "legacy" ]]; then
@@ -25,6 +27,7 @@ if [[ "${COMPOSE_IMPL:-v2}" == "legacy" ]]; then
 elif docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
   echo "INFO using Docker Compose v2 file: $COMPOSE_FILE"
+  echo "INFO compose project: $COMPOSE_PROJECT_NAME"
 elif command -v docker-compose >/dev/null 2>&1; then
   COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.legacy.yml"
   COMPOSE=(docker-compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")

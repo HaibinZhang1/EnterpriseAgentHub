@@ -1,10 +1,113 @@
-import { seedBootstrap, seedNotifications, seedSkills } from "../fixtures/p1SeedData";
 import type { BootstrapContext, LocalEvent, LocalNotification, MarketFilters, SkillSummary } from "../domain/p1";
 
-const API_PREFIX = import.meta.env.VITE_DESKTOP_API_PREFIX ?? "/api/v1";
+interface ServerSkillSummary {
+  skillID: string;
+  displayName: string;
+  description: string;
+  version: string;
+  status: SkillSummary["status"];
+  visibilityLevel: SkillSummary["visibilityLevel"];
+  detailAccess: SkillSummary["detailAccess"];
+  canInstall: boolean;
+  canUpdate?: boolean;
+  cannotInstallReason?: string;
+  installState: SkillSummary["installState"];
+  authorName?: string;
+  authorDepartment?: string;
+  currentVersionUpdatedAt: string;
+  publishedAt?: string;
+  compatibleTools: string[];
+  compatibleSystems: string[];
+  tags?: string[];
+  category?: string;
+  riskLevel?: SkillSummary["riskLevel"];
+  starCount: number;
+  downloadCount: number;
+  readme?: string;
+  reviewSummary?: string;
+  latestVersion?: string;
+}
 
-async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PREFIX}${path}`, {
+interface ServerNotification {
+  notificationID: string;
+  type: LocalNotification["type"];
+  title: string;
+  summary: string;
+  objectID?: string;
+  createdAt: string;
+  read: boolean;
+  action?: string;
+}
+
+const DEFAULT_API_BASE_URL = import.meta.env.VITE_DESKTOP_API_BASE_URL ?? "http://127.0.0.1:3000";
+let currentApiBaseUrl = normalizeBaseUrl(DEFAULT_API_BASE_URL);
+
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function resolveTargetPage(action?: string): LocalNotification["targetPage"] {
+  if (action?.startsWith("/skills/")) {
+    return "market";
+  }
+  if (action === "/notifications") {
+    return "notifications";
+  }
+  return "home";
+}
+
+function toLocalNotification(notification: ServerNotification): LocalNotification {
+  return {
+    notificationID: notification.notificationID,
+    type: notification.type,
+    title: notification.title,
+    summary: notification.summary,
+    relatedSkillID: notification.objectID ?? null,
+    targetPage: resolveTargetPage(notification.action),
+    occurredAt: notification.createdAt,
+    unread: !notification.read,
+    source: "server"
+  };
+}
+
+function toSkillSummary(skill: ServerSkillSummary): SkillSummary {
+  return {
+    skillID: skill.skillID,
+    displayName: skill.displayName,
+    description: skill.description,
+    version: skill.version,
+    localVersion: null,
+    latestVersion: skill.latestVersion ?? skill.version,
+    status: skill.status,
+    visibilityLevel: skill.visibilityLevel,
+    detailAccess: skill.detailAccess,
+    canInstall: skill.canInstall,
+    canUpdate: skill.canUpdate ?? false,
+    cannotInstallReason: skill.cannotInstallReason,
+    installState: skill.installState,
+    authorName: skill.authorName,
+    authorDepartment: skill.authorDepartment,
+    currentVersionUpdatedAt: skill.currentVersionUpdatedAt,
+    publishedAt: skill.publishedAt ?? skill.currentVersionUpdatedAt,
+    compatibleTools: skill.compatibleTools,
+    compatibleSystems: skill.compatibleSystems,
+    tags: skill.tags ?? [],
+    category: skill.category ?? "uncategorized",
+    riskLevel: skill.riskLevel ?? "unknown",
+    starCount: skill.starCount,
+    downloadCount: skill.downloadCount,
+    starred: false,
+    readme: skill.readme,
+    reviewSummary: skill.reviewSummary,
+    isScopeRestricted: Boolean(skill.cannotInstallReason === "scope_restricted"),
+    hasLocalHashDrift: false,
+    enabledTargets: [],
+    lastEnabledAt: null
+  };
+}
+
+async function requestJSON<T>(path: string, init?: RequestInit, baseUrl = currentApiBaseUrl): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
     credentials: "include",
     headers: { "content-type": "application/json", ...init?.headers },
     ...init
@@ -77,87 +180,51 @@ export interface P1Client {
 export const p1Client: P1Client = {
   async login(input) {
     if (input.username.trim().length === 0 || input.password.trim().length === 0) {
-      throw new Error("账号或密码不正确");
+      throw new Error("Username and password are required");
     }
 
-    if (input.serverURL.includes("mock")) {
-      return seedBootstrap;
-    }
-
-    try {
-      await requestJSON("/auth/login", { method: "POST", body: JSON.stringify(input) });
-      return await requestJSON<BootstrapContext>("/desktop/bootstrap");
-    } catch {
-      return seedBootstrap;
-    }
+    currentApiBaseUrl = normalizeBaseUrl(input.serverURL || DEFAULT_API_BASE_URL);
+    await requestJSON("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: input.username, password: input.password })
+    });
+    return await requestJSON<BootstrapContext>("/desktop/bootstrap");
   },
 
   async bootstrap() {
-    try {
-      return await requestJSON<BootstrapContext>("/desktop/bootstrap");
-    } catch {
-      return seedBootstrap;
-    }
+    return await requestJSON<BootstrapContext>("/desktop/bootstrap");
   },
 
   async listSkills(filters) {
-    try {
-      const response = await requestJSON<{ items: SkillSummary[] }>(`/skills?${new URLSearchParams({ q: filters.query })}`);
-      return filterSkills(response.items, filters);
-    } catch {
-      return filterSkills(seedSkills, filters);
-    }
+    const response = await requestJSON<{ items: ServerSkillSummary[] }>(`/skills?${new URLSearchParams({ q: filters.query })}`);
+    return filterSkills(response.items.map(toSkillSummary), filters);
   },
 
   async getSkill(skillID) {
-    try {
-      return await requestJSON<SkillSummary>(`/skills/${encodeURIComponent(skillID)}`);
-    } catch {
-      const skill = seedSkills.find((item) => item.skillID === skillID);
-      if (!skill) {
-        throw new Error("Skill 不存在或不可见");
-      }
-      return skill;
-    }
+    const response = await requestJSON<ServerSkillSummary>(`/skills/${encodeURIComponent(skillID)}`);
+    return toSkillSummary(response);
   },
 
   async star(skillID, starred) {
-    try {
-      return await requestJSON(`/skills/${encodeURIComponent(skillID)}/star`, { method: starred ? "POST" : "DELETE" });
-    } catch {
-      const skill = seedSkills.find((item) => item.skillID === skillID);
-      return { skillID, starred, starCount: Math.max(0, (skill?.starCount ?? 0) + (starred ? 1 : -1)) };
-    }
+    return await requestJSON(`/skills/${encodeURIComponent(skillID)}/star`, { method: starred ? "POST" : "DELETE" });
   },
 
   async listNotifications(unreadOnly = false) {
-    try {
-      const response = await requestJSON<{ items: LocalNotification[] }>(`/notifications?unreadOnly=${String(unreadOnly)}`);
-      return response.items;
-    } catch {
-      return seedNotifications.filter((notification) => (unreadOnly ? notification.unread : true));
-    }
+    const response = await requestJSON<{ items: ServerNotification[] }>(`/notifications?unreadOnly=${String(unreadOnly)}`);
+    return response.items.map(toLocalNotification);
   },
 
   async markNotificationsRead(notificationIDs) {
-    try {
-      return await requestJSON<{ unreadNotificationCount: number }>("/notifications/mark-read", {
-        method: "POST",
-        body: JSON.stringify({ notificationIDs: notificationIDs === "all" ? [] : notificationIDs, all: notificationIDs === "all" })
-      });
-    } catch {
-      return { unreadNotificationCount: 0 };
-    }
+    return await requestJSON<{ unreadNotificationCount: number }>("/notifications/mark-read", {
+      method: "POST",
+      body: JSON.stringify({ notificationIDs: notificationIDs === "all" ? [] : notificationIDs, all: notificationIDs === "all" })
+    });
   },
 
   async syncLocalEvents(events) {
-    try {
-      return await requestJSON("/desktop/local-events", {
-        method: "POST",
-        body: JSON.stringify({ deviceID: "desktop_mock_001", events })
-      });
-    } catch {
-      return { acceptedEventIDs: events.map((event) => event.eventID), rejectedEvents: [], serverStateChanged: false };
-    }
+    return await requestJSON("/desktop/local-events", {
+      method: "POST",
+      body: JSON.stringify({ deviceID: "desktop_mock_001", events })
+    });
   }
 };

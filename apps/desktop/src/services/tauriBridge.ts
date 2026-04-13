@@ -19,6 +19,19 @@ function getInvoke(): TauriInvoker | null {
   return window.__TAURI__?.core?.invoke ?? null;
 }
 
+async function invokeOrFallback<T>(command: string, args: Record<string, unknown> | undefined, fallback: () => Promise<T>): Promise<T> {
+  const invoke = getInvoke();
+  if (!invoke) {
+    return fallback();
+  }
+
+  try {
+    return await invoke<T>(command, args);
+  } catch {
+    return fallback();
+  }
+}
+
 function buildTarget(skill: SkillSummary, targetType: TargetType, targetID: string, requestedMode: RequestedMode): EnabledTarget {
   const tool = seedTools.find((item) => item.toolID === targetID);
   const project = seedProjects.find((item) => item.projectID === targetID);
@@ -51,112 +64,96 @@ export interface DesktopBridge {
 
 export const desktopBridge: DesktopBridge = {
   async getLocalBootstrap() {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("get_local_bootstrap");
-    }
-    await mockWait();
-    return { tools: seedTools, projects: seedProjects };
+    return invokeOrFallback("get_local_bootstrap", undefined, async () => {
+      await mockWait();
+      return { tools: seedTools, projects: seedProjects };
+    });
   },
 
   async installSkillPackage(skill) {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("install_skill_package", { skillID: skill.skillID, version: skill.version });
-    }
-    await mockWait(220);
-    return { localVersion: skill.version };
+    return invokeOrFallback("install_skill_package", { skillID: skill.skillID, version: skill.version }, async () => {
+      await mockWait(220);
+      return { localVersion: skill.version };
+    });
   },
 
   async updateSkillPackage(skill) {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("update_skill_package", { skillID: skill.skillID, version: skill.version });
-    }
-    await mockWait(220);
-    return { localVersion: skill.version };
+    return invokeOrFallback("update_skill_package", { skillID: skill.skillID, version: skill.version }, async () => {
+      await mockWait(220);
+      return { localVersion: skill.version };
+    });
   },
 
   async uninstallSkill(skillID) {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("uninstall_skill", { skillID });
-    }
-    await mockWait(220);
-    return { removedTargetIDs: [] };
+    return invokeOrFallback("uninstall_skill", { skillID }, async () => {
+      await mockWait(220);
+      return { removedTargetIDs: [] };
+    });
   },
 
   async enableSkill(input) {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("enable_skill", {
-        skillID: input.skill.skillID,
-        targetType: input.targetType,
-        targetID: input.targetID,
-        requestedMode: input.requestedMode
-      });
-    }
-    await mockWait(240);
-    const target = buildTarget(input.skill, input.targetType, input.targetID, input.requestedMode);
-    return {
-      target,
-      event: {
-        eventID: `evt_${crypto.randomUUID()}`,
-        eventType: "enable_result",
-        skillID: input.skill.skillID,
-        version: input.skill.localVersion ?? input.skill.version,
-        targetType: input.targetType,
-        targetID: input.targetID,
-        targetPath: target.targetPath,
-        requestedMode: input.requestedMode,
-        resolvedMode: target.resolvedMode,
-        fallbackReason: target.fallbackReason,
-        occurredAt: target.enabledAt,
-        result: "success"
-      }
-    };
+    return invokeOrFallback("enable_skill", {
+      skillID: input.skill.skillID,
+      targetType: input.targetType,
+      targetID: input.targetID,
+      requestedMode: input.requestedMode
+    }, async () => {
+      await mockWait(240);
+      const target = buildTarget(input.skill, input.targetType, input.targetID, input.requestedMode);
+      return {
+        target,
+        event: {
+          eventID: `evt_${crypto.randomUUID()}`,
+          eventType: "enable_result",
+          skillID: input.skill.skillID,
+          version: input.skill.localVersion ?? input.skill.version,
+          targetType: input.targetType,
+          targetID: input.targetID,
+          targetPath: target.targetPath,
+          requestedMode: input.requestedMode,
+          resolvedMode: target.resolvedMode,
+          fallbackReason: target.fallbackReason,
+          occurredAt: target.enabledAt,
+          result: "success"
+        }
+      };
+    });
   },
 
   async disableSkill(input) {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("disable_skill", { skillID: input.skill.skillID, targetID: input.targetID });
-    }
-    await mockWait(180);
-    const existing = input.skill.enabledTargets.find((target) => target.targetID === input.targetID);
-    return {
-      event: {
-        eventID: `evt_${crypto.randomUUID()}`,
-        eventType: "disable_result",
-        skillID: input.skill.skillID,
-        version: input.skill.localVersion ?? input.skill.version,
-        targetType: existing?.targetType ?? "tool",
-        targetID: input.targetID,
-        targetPath: existing?.targetPath ?? input.targetID,
-        requestedMode: existing?.requestedMode ?? "symlink",
-        resolvedMode: existing?.resolvedMode ?? "symlink",
-        fallbackReason: existing?.fallbackReason ?? null,
-        occurredAt: new Date().toISOString(),
-        result: "success"
-      }
-    };
+    return invokeOrFallback("disable_skill", { skillID: input.skill.skillID, targetID: input.targetID }, async () => {
+      await mockWait(180);
+      const existing = input.skill.enabledTargets.find((target) => target.targetID === input.targetID);
+      return {
+        event: {
+          eventID: `evt_${crypto.randomUUID()}`,
+          eventType: "disable_result",
+          skillID: input.skill.skillID,
+          version: input.skill.localVersion ?? input.skill.version,
+          targetType: existing?.targetType ?? "tool",
+          targetID: input.targetID,
+          targetPath: existing?.targetPath ?? input.targetID,
+          requestedMode: existing?.requestedMode ?? "symlink",
+          resolvedMode: existing?.resolvedMode ?? "symlink",
+          fallbackReason: existing?.fallbackReason ?? null,
+          occurredAt: new Date().toISOString(),
+          result: "success"
+        }
+      };
+    });
   },
 
   async listLocalInstalls() {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("list_local_installs");
-    }
-    await mockWait();
-    return [];
+    return invokeOrFallback("list_local_installs", undefined, async () => {
+      await mockWait();
+      return [];
+    });
   },
 
   async refreshToolDetection() {
-    const invoke = getInvoke();
-    if (invoke) {
-      return invoke("detect_tools");
-    }
-    await mockWait(240);
-    return seedTools.map((tool) => (tool.toolID === "windsurf" ? { ...tool, status: "missing" } : tool));
+    return invokeOrFallback("detect_tools", undefined, async () => {
+      await mockWait(240);
+      return seedTools.map((tool) => (tool.toolID === "windsurf" ? { ...tool, status: "missing" } : tool));
+    });
   }
 };
