@@ -5,9 +5,9 @@
 | 字段 | 内容 |
 |------|------|
 | 文档名称 | 当前版本 Desktop 数据契约 |
-| 版本 | V1.1 |
+| 版本 | V1.2 |
 | 状态 | 当前版本 定稿 |
-| 日期 | 2026-04-11 |
+| 日期 | 2026-04-14 |
 | 关联 PRD | [当前版本 Desktop 使用闭环 PRD](20_p1_desktop_prd.md) |
 
 ## 2. 契约原则
@@ -123,7 +123,7 @@
   "features": {
     "p1Desktop": true,
     "publishSkill": true,
-    "reviewWorkbench": false,
+    "reviewWorkbench": true,
     "adminManage": false,
     "mcpManage": false,
     "pluginManage": false
@@ -306,6 +306,30 @@
 - `DELETE /admin/skills/{skillID}`
 - `GET /admin/reviews`
 - `GET /admin/reviews/{reviewID}`
+- `GET /admin/reviews/{reviewID}/files`
+- `GET /admin/reviews/{reviewID}/files/{relativePath}`
+
+### 5.10 发布者端接口
+
+当前版本新增以下发布者接口：
+
+- `GET /publisher/skills`
+- `GET /publisher/skills/{skillID}`
+- `POST /publisher/skills/{skillID}/delist`
+- `POST /publisher/skills/{skillID}/relist`
+- `POST /publisher/skills/{skillID}/archive`
+- `GET /publisher/submissions/{submissionID}`
+- `GET /publisher/submissions/{submissionID}/files`
+- `GET /publisher/submissions/{submissionID}/files/{relativePath}`
+
+规则：
+
+- 作者侧状态变更仅允许操作本人名下 Skill。
+- `archived` 状态不得再次 `relist`。
+- 作者页和管理页都应消费服务端返回的可执行动作字段，不在前端自行推导互斥按钮。
+- 文件预览仅允许 `.md` / `.markdown` / `.txt`，其他文件只返回下载信息或 `previewable=false`。
+- 文件内容接口由服务端解压并读取当前提交包文件；前端不直接处理 ZIP。
+- 单文件预览返回 UTF-8 文本，最大 256 KB；超出部分截断并标记 `truncated=true`。
 
 规则：
 
@@ -414,6 +438,62 @@
 | read | 是 | 是否已读 |
 | action | 否 | 跳转目标 |
 
+### 6.4 PublisherSkillSummary
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| skillID | 是 | Skill 唯一标识 |
+| displayName | 是 | 作者侧展示名称 |
+| version | 是 | 当前版本 |
+| status | 是 | `skillStatus` |
+| visibilityLevel | 是 | `visibilityLevel` |
+| downloadCount | 是 | 下载量 |
+| starCount | 是 | Star 数 |
+| updatedAt | 是 | 最近更新时间 |
+| availableActions | 是 | 当前状态下允许展示的动作集合，例如 `delist` / `relist` / `archive` / `withdraw` / `resubmit` / `publish_new_version` |
+
+### 6.5 SubmissionFileEntry
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| relativePath | 是 | 提交包内相对路径 |
+| fileType | 是 | `markdown` / `text` / `binary` |
+| sizeBytes | 是 | 文件大小 |
+| previewable | 是 | 当前是否支持在线预览 |
+| downloadURL | 否 | 下载地址或下载接口入口 |
+
+### 6.6 SubmissionFilePreview
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| relativePath | 是 | 当前预览文件 |
+| fileType | 是 | `markdown` / `text` |
+| content | 是 | UTF-8 文本内容 |
+| truncated | 是 | 是否已截断 |
+
+### 6.7 PublisherSubmissionDetail
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| submissionID | 是 | 提交单 ID |
+| skillID | 是 | Skill 唯一标识 |
+| version | 是 | 本次提交版本 |
+| status | 是 | 提交流转状态 |
+| reviewStage | 否 | 当前审核阶段 |
+| reviewComment | 否 | 最新审核意见 |
+| rejectionReason | 否 | 拒绝或退回原因 |
+| files | 是 | `SubmissionFileEntry[]` |
+
+### 6.8 ReviewDetail
+
+在现有审核详情基础上增加：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| files | 是 | `SubmissionFileEntry[]` |
+| latestReviewComment | 否 | 最新审核说明 |
+| permissionChangeHistory | 否 | 权限变更记录摘要 |
+
 ## 7. 本地状态模型
 
 ### 7.1 LocalSkillInstall
@@ -483,6 +563,9 @@
 - 可安装或可更新时，`download-ticket` 必须返回 `packageURL`、`packageHash`、`packageSize`、`packageFileCount` 和 `expiresAt`。
 - 无权限、下架、归档、权限收缩场景必须返回稳定错误码，不允许只返回文案。
 - 受限详情不得返回 README、审核摘要、包地址或包标识。
+- 作者侧 Skill 摘要必须返回 `availableActions`，避免前端自行推导 `上架 / 下架 / 归档`。
+- 作者提交详情和审核详情都必须返回文件列表；`.md` / `.markdown` / `.txt` 支持内容预览，其它文件只允许下载。
+- 文件预览接口必须返回 `relativePath`、`fileType`、`content`、`truncated`；超大文件不得返回完整正文。
 - 客户端离线事件同步不得改变权限、下架、版本或审核状态。
 - 本地状态必须能在无网络时支撑"我的已安装"、启用/停用、工具/项目路径展示。
 - 本地启用/停用事件必须上报 `requestedMode`、`resolvedMode`；发生 copy 降级时必须包含 `fallbackReason`，服务端只记录事实，不改变治理状态。

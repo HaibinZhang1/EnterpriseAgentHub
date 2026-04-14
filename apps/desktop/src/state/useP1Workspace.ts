@@ -69,6 +69,43 @@ function applySkill(skills: SkillSummary[], skillID: string, updater: (skill: Sk
   return skills.map((skill) => (skill.skillID === skillID ? updater(skill) : skill));
 }
 
+function upsertPublisherSkillSummary(
+  current: PublisherSkillSummary[],
+  submission: PublisherSubmissionDetail,
+): PublisherSkillSummary[] {
+  const existing = current.find((item) => item.skillID === submission.skillID) ?? null;
+  const nextSummary: PublisherSkillSummary = {
+    skillID: submission.skillID,
+    displayName: submission.displayName,
+    publishedSkillExists: existing?.publishedSkillExists ?? Boolean(submission.currentVersion),
+    currentVersion: submission.currentVersion ?? existing?.currentVersion ?? null,
+    currentStatus: existing?.currentStatus ?? null,
+    currentVisibilityLevel: submission.currentVisibilityLevel ?? existing?.currentVisibilityLevel ?? null,
+    currentScopeType: submission.currentScopeType ?? existing?.currentScopeType ?? null,
+    latestSubmissionID: submission.submissionID,
+    latestSubmissionType: submission.submissionType,
+    latestWorkflowState: submission.workflowState,
+    latestReviewStatus: submission.reviewStatus,
+    latestDecision: submission.decision ?? null,
+    latestRequestedVersion: submission.version,
+    latestRequestedVisibilityLevel: submission.visibilityLevel,
+    latestRequestedScopeType: submission.scopeType,
+    latestReviewSummary: submission.reviewSummary ?? null,
+    submittedAt: submission.submittedAt,
+    updatedAt: submission.updatedAt,
+    canWithdraw: submission.canWithdraw,
+    availableStatusActions: existing?.availableStatusActions ?? [],
+  };
+
+  if (!existing) {
+    return [nextSummary, ...current].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  return current
+    .map((item) => (item.skillID === submission.skillID ? nextSummary : item))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
 function normalizeLocalInstallTargets(install: LocalSkillInstall) {
   return install.enabledTargets.map((target) => ({
     ...target,
@@ -911,6 +948,7 @@ export function useP1Workspace() {
         const submission = await p1Client.submitPublisherSubmission(formData);
         setSelectedPublisherSubmission(submission);
         setSelectedPublisherSubmissionID(submission.submissionID);
+        setPublisherSkills((current) => upsertPublisherSkillSummary(current, submission));
         await refreshPublisherData();
       });
     },
@@ -923,10 +961,52 @@ export function useP1Workspace() {
         const submission = await p1Client.withdrawPublisherSubmission(submissionID);
         setSelectedPublisherSubmission(submission);
         setSelectedPublisherSubmissionID(submission.submissionID);
+        setPublisherSkills((current) => upsertPublisherSkillSummary(current, submission));
         await refreshPublisherData();
       });
     },
     [refreshPublisherData, requireAuthenticatedAction]
+  );
+
+  const delistPublisherSkill = useCallback(
+    async (skillID: string) => {
+      requireAuthenticatedAction("my_installed", async () => {
+        setPublisherSkills(await p1Client.delistPublisherSkill(skillID));
+      });
+    },
+    [requireAuthenticatedAction]
+  );
+
+  const relistPublisherSkill = useCallback(
+    async (skillID: string) => {
+      requireAuthenticatedAction("my_installed", async () => {
+        setPublisherSkills(await p1Client.relistPublisherSkill(skillID));
+      });
+    },
+    [requireAuthenticatedAction]
+  );
+
+  const archivePublisherSkill = useCallback(
+    async (skillID: string) => {
+      requireAuthenticatedAction("my_installed", async () => {
+        setPublisherSkills(await p1Client.archivePublisherSkill(skillID));
+      });
+    },
+    [requireAuthenticatedAction]
+  );
+
+  const listPublisherSubmissionFiles = useCallback(
+    async (submissionID: string) => {
+      return p1Client.listPublisherSubmissionFiles(submissionID);
+    },
+    []
+  );
+
+  const getPublisherSubmissionFileContent = useCallback(
+    async (submissionID: string, relativePath: string) => {
+      return p1Client.getPublisherSubmissionFileContent(submissionID, relativePath);
+    },
+    []
   );
 
   const createDepartment = useCallback(
@@ -1094,6 +1174,20 @@ export function useP1Workspace() {
     [refreshReviews, requireAuthenticatedAction]
   );
 
+  const listReviewFiles = useCallback(
+    async (reviewID: string) => {
+      return p1Client.listReviewFiles(reviewID);
+    },
+    []
+  );
+
+  const getReviewFileContent = useCallback(
+    async (reviewID: string, relativePath: string) => {
+      return p1Client.getReviewFileContent(reviewID, relativePath);
+    },
+    []
+  );
+
   return {
     authState,
     loggedIn: authState === "authenticated",
@@ -1153,7 +1247,12 @@ export function useP1Workspace() {
       setSelectedPublisherSubmissionID,
       refreshPublisherData,
       submitPublisherSubmission,
-      withdrawPublisherSubmission
+      withdrawPublisherSubmission,
+      delistPublisherSkill,
+      relistPublisherSkill,
+      archivePublisherSkill,
+      listSubmissionFiles: listPublisherSubmissionFiles,
+      getSubmissionFileContent: getPublisherSubmissionFileContent
     },
     adminData: {
       departments,
@@ -1174,6 +1273,8 @@ export function useP1Workspace() {
       approveReview,
       returnReview,
       rejectReview,
+      listReviewFiles,
+      getReviewFileContent,
       createDepartment,
       updateDepartment,
       deleteDepartment,

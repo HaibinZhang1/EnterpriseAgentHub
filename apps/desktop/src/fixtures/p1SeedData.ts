@@ -556,6 +556,10 @@ export const seedReviewDetail: ReviewDetail = {
   packageHash: "sha256:mock",
   packageSize: 1024,
   packageFileCount: 2,
+  packageFiles: [
+    { relativePath: "SKILL.md", fileType: "markdown", sizeBytes: 640, previewable: true },
+    { relativePath: "assets/notes.txt", fileType: "text", sizeBytes: 128, previewable: true }
+  ],
   reviewSummary: "当前由系统管理员查看授权范围变更影响。",
   history: [
     { historyID: "rvh_001", action: "submitted", actorName: "王五", comment: "提交权限变更申请。", createdAt: "2026-04-10T09:00:00Z" },

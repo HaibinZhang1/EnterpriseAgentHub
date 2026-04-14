@@ -117,12 +117,14 @@ export class SkillsService {
     if (userID) {
       return this.listForUser(query, userID);
     }
-    const plan = buildSkillListQueryPlan(query);
-    const result = await this.database.query<ListedSkillRow>(plan.text, plan.values);
-    const rows = result.rows;
-    const items = rows.map((row) => this.toSummary(row));
-    const total = rows[0] ? Number(rows[0].total_count) : 0;
-    return pageOf(items, plan.page, plan.pageSize, total);
+    const page = positiveInt(query.page, 1);
+    const pageSize = positiveInt(query.pageSize, 20, 100);
+    const unpagedPlan = buildSkillListQueryPlan({ ...query, page: '1', pageSize: '5000' });
+    const result = await this.database.query<ListedSkillRow>(unpagedPlan.text, unpagedPlan.values);
+    const visibleRows = result.rows.filter((row) => row.status === 'published');
+    const start = (page - 1) * pageSize;
+    const items = visibleRows.slice(start, start + pageSize).map((row) => this.toSummary(row));
+    return pageOf(items, page, pageSize, visibleRows.length);
   }
 
   async detail(skillID: string, userID?: string): Promise<SkillDetail | SkillSummary> {
@@ -341,6 +343,9 @@ export class SkillsService {
     const unpagedPlan = buildSkillListQueryPlan({ ...query, page: '1', pageSize: '5000' });
     const result = await this.database.query<ListedSkillRow>(unpagedPlan.text, unpagedPlan.values);
     const visibleRows = result.rows.filter((row) => {
+      if (row.status !== 'published') {
+        return false;
+      }
       const auth = this.authorizationFor(row, requester);
       if (auth.detailAccess === 'none') {
         return false;

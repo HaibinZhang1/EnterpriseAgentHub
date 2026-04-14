@@ -11,7 +11,8 @@ function ModalFrame({
   children,
   onClose,
   narrow = false,
-  className = ""
+  className = "",
+  overlay = true
 }: {
   title: string;
   eyebrow: string;
@@ -19,21 +20,31 @@ function ModalFrame({
   onClose: () => void;
   narrow?: boolean;
   className?: string;
+  overlay?: boolean;
 }) {
+  const panelClassName = narrow ? `modal-panel narrow ${className}`.trim() : `modal-panel ${className}`.trim();
+  const panel = (
+    <section className={overlay ? panelClassName : `${panelClassName} floating`.trim()} role="dialog" aria-modal={overlay} aria-label={title} onClick={(event) => event.stopPropagation()}>
+      <div className="modal-head">
+        <div>
+          <div className="eyebrow">{eyebrow}</div>
+          <h2>{title}</h2>
+        </div>
+        <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <X size={16} />
+        </button>
+      </div>
+      <div className="modal-body">{children}</div>
+    </section>
+  );
+
+  if (!overlay) {
+    return panel;
+  }
+
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <section className={narrow ? `modal-panel narrow ${className}`.trim() : `modal-panel ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
-        <div className="modal-head">
-          <div>
-            <div className="eyebrow">{eyebrow}</div>
-            <h2>{title}</h2>
-          </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </section>
+      {panel}
     </div>
   );
 }
@@ -87,6 +98,7 @@ function ConfirmModal({ ui }: { ui: DesktopUIState }) {
 function ProgressModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: DesktopUIState }) {
   const progress = workspace.progress;
   if (!progress || !ui.preferences.showInstallResults) return null;
+  const nonBlocking = progress.skillID === "request" || progress.skillID === "permission";
   const steps = progress.operation === "install" || progress.operation === "update"
     ? ["获取下载凭证", "下载包", "校验大小和文件数", "校验 SHA-256", "写入 Central Store", "完成"]
     : ["准备目标", "执行本地命令", "写入结果", "完成"];
@@ -94,7 +106,7 @@ function ProgressModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Des
   const toneIcon = progress.result === "success" ? <CheckCircle2 size={18} /> : progress.result === "failed" ? <AlertTriangle size={18} /> : <Sparkles size={18} />;
 
   return (
-    <ModalFrame title={`${progress.operation} · ${progress.skillID}`} eyebrow="本地写入流程" onClose={ui.closeModal} narrow>
+    <ModalFrame title={`${progress.operation} · ${progress.skillID}`} eyebrow="本地写入流程" onClose={ui.closeModal} narrow overlay={!nonBlocking}>
       <div className={`callout ${progress.result === "failed" ? "warning" : "info"}`}>
         {toneIcon}
         {progress.message}

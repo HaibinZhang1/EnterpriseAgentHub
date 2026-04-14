@@ -86,6 +86,11 @@ test('React desktop app is split into shell, pages, modals, and UI placeholder c
   assert.match(desktopPagesTsx, /approveReview/);
   assert.match(desktopPagesTsx, /returnReview/);
   assert.match(desktopPagesTsx, /rejectReview/);
+  assert.match(desktopPagesTsx, /PackagePreviewPanel/);
+  assert.match(desktopPagesTsx, /下载提交包/);
+  assert.match(desktopPagesTsx, /下架/);
+  assert.match(desktopPagesTsx, /上架/);
+  assert.match(desktopPagesTsx, /归档/);
   assert.match(desktopPagesTsx, /reviewActionLabel/);
   assert.match(desktopModalsTsx, /TargetsModal/);
   assert.match(desktopModalsTsx, /ConnectionStatusModal/);
@@ -142,12 +147,20 @@ test('Live smoke scripts exist for real source-start API verification', () => {
 test('Publishing and review client routes are wired to the live API', () => {
   for (const fragment of [
     '/publisher/skills',
+    '/publisher/skills/',
     '/publisher/submissions',
+    '/publisher/submissions/',
     '/admin/reviews',
+    '/admin/reviews/',
     '/pass-precheck',
     '/approve',
     '/return',
     '/reject',
+    '/delist',
+    '/relist',
+    '/archive',
+    '/files',
+    '/file-content',
     '/claim'
   ]) {
     assert.match(p1Client, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

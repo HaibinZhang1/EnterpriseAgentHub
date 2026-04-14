@@ -25,6 +25,105 @@
   letter-spacing: 0;
 }
 
+.package-preview-shell {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.package-file-list {
+  display: grid;
+  gap: 8px;
+}
+
+.package-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--panel-muted);
+  text-align: left;
+}
+
+.package-file-row.active {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.package-file-row span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.package-file-row strong,
+.package-file-row small {
+  overflow-wrap: anywhere;
+}
+
+.package-preview-pane {
+  min-height: 260px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--panel-muted);
+}
+
+.markdown-preview,
+.text-preview {
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.markdown-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.markdown-preview p,
+.markdown-preview ul,
+.markdown-preview pre {
+  margin: 0;
+}
+
+.markdown-preview ul {
+  padding-left: 18px;
+}
+
+.markdown-preview pre,
+.text-preview {
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.08);
+  white-space: pre-wrap;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 960px) {
+  .package-preview-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
 body[data-theme="fresh"] {
   --bg: #f2f8f4;
   --surface-2: #e5f4ee;
@@ -1148,6 +1247,14 @@ dd {
   background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.modal-panel.floating {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 35;
+  width: min(520px, calc(100vw - 32px));
 }
 
 .modal-panel.narrow {

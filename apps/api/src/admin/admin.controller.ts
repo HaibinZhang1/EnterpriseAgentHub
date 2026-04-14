@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { MenuPermissionGuard } from '../auth/menu-permission.guard';
 import { P1AuthenticatedRequest, P1AuthGuard } from '../auth/p1-auth.guard';
 import { RequireMenuPermission } from '../auth/require-menu-permission.decorator';
@@ -132,6 +132,20 @@ export class AdminController {
   @RequireMenuPermission('review')
   getReview(@Req() request: P1AuthenticatedRequest, @Param('reviewID') reviewID: string) {
     return this.publishingService.getReview(request.p1UserID ?? '', reviewID);
+  }
+
+  @Get('reviews/:reviewID/files')
+  listReviewFiles(@Req() request: P1AuthenticatedRequest, @Param('reviewID') reviewID: string) {
+    return this.publishingService.listReviewFiles(request.p1UserID ?? '', reviewID);
+  }
+
+  @Get('reviews/:reviewID/file-content')
+  reviewFileContent(
+    @Req() request: P1AuthenticatedRequest,
+    @Param('reviewID') reviewID: string,
+    @Query('path') relativePath: string,
+  ) {
+    return this.publishingService.getReviewFileContent(request.p1UserID ?? '', reviewID, relativePath);
   }
 
   @Post('reviews/:reviewID/claim')

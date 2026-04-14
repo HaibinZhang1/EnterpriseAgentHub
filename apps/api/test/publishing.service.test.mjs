@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
@@ -14,6 +19,24 @@ const {
 
 function createService(database) {
   return new PublishingService(database, { get: () => undefined });
+}
+
+async function createZipFixture(fileMap) {
+  const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'eah-publishing-src-'));
+  const zipDir = await fs.mkdtemp(path.join(os.tmpdir(), 'eah-publishing-zip-'));
+  const zipPath = path.join(zipDir, 'package.zip');
+
+  for (const [relativePath, content] of Object.entries(fileMap)) {
+    const targetPath = path.join(sourceDir, relativePath);
+    mkdirSync(path.dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, content);
+  }
+
+  execFileSync('zip', ['-qr', zipPath, '.'], { cwd: sourceDir });
+  const buffer = await fs.readFile(zipPath);
+  rmSync(sourceDir, { recursive: true, force: true });
+  rmSync(zipDir, { recursive: true, force: true });
+  return buffer;
 }
 
 test('publishing utils parse frontmatter and detect semver expansion rules', () => {
@@ -149,4 +172,89 @@ test('PublishingService routes public submissions to nearest level-3 reviewer on
     submitter_id: 'u_admin_l4_a',
   });
   assert.deepEqual(reviewerIDs, ['u_admin_l3_backend']);
+});
+
+test('PublishingService lets authors delist and relist their own skills but blocks invalid transitions', async () => {
+  const queries = [];
+  const service = createService({
+    async query(text, values = []) {
+      queries.push({ text, values });
+      return { rows: [] };
+    },
+  });
+
+  service.loadActor = async () => ({ userID: 'u_author', role: 'normal_user' });
+  service.loadSkillByID = async () => ({
+    skill_id: 'prompt-guardrails',
+    author_id: 'u_author',
+    status: 'published',
+  });
+  service.listPublisherSkills = async () => [{ skillID: 'prompt-guardrails', currentStatus: 'delisted' }];
+
+  const delisted = await service.setPublisherSkillStatus('u_author', 'prompt-guardrails', 'delist');
+  assert.deepEqual(delisted, [{ skillID: 'prompt-guardrails', currentStatus: 'delisted' }]);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].text, /UPDATE skills SET status = \$2/);
+  assert.deepEqual(queries[0].values, ['prompt-guardrails', 'delisted']);
+
+  service.loadSkillByID = async () => ({
+    skill_id: 'prompt-guardrails',
+    author_id: 'u_author',
+    status: 'archived',
+  });
+  await assert.rejects(
+    () => service.setPublisherSkillStatus('u_author', 'prompt-guardrails', 'relist'),
+    /validation_failed/,
+  );
+
+  service.loadSkillByID = async () => ({
+    skill_id: 'prompt-guardrails',
+    author_id: 'u_other',
+    status: 'published',
+  });
+  await assert.rejects(
+    () => service.setPublisherSkillStatus('u_author', 'prompt-guardrails', 'delist'),
+    /permission_denied/,
+  );
+});
+
+test('PublishingService lists previewable package files and truncates large text previews', async () => {
+  const largeText = 'A'.repeat(270 * 1024);
+  const packageBuffer = await createZipFixture({
+    'SKILL.md': '# Prompt Guardrails\n\nreview content\n',
+    'README.markdown': '## Details\n\nMore text\n',
+    'assets/notes.txt': 'plain text file\n',
+    'assets/logo.png': Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    'docs/large.txt': largeText,
+  });
+
+  const service = createService({ async query() { throw new Error('query not expected'); } });
+  service.readReviewPackageBuffer = async () => packageBuffer;
+
+  const files = await service.listPackageFilesForReview({});
+  assert.deepEqual(
+    files.map((file) => [file.relativePath, file.fileType, file.previewable]),
+    [
+      ['assets/logo.png', 'other', false],
+      ['assets/notes.txt', 'text', true],
+      ['docs/large.txt', 'text', true],
+      ['README.markdown', 'markdown', true],
+      ['SKILL.md', 'markdown', true],
+    ],
+  );
+
+  const skillDoc = await service.readPackageFileContentForReview({}, 'SKILL.md');
+  assert.equal(skillDoc.fileType, 'markdown');
+  assert.equal(skillDoc.truncated, false);
+  assert.match(skillDoc.content, /Prompt Guardrails/);
+
+  const largeDoc = await service.readPackageFileContentForReview({}, 'docs/large.txt');
+  assert.equal(largeDoc.fileType, 'text');
+  assert.equal(largeDoc.truncated, true);
+  assert.equal(largeDoc.content.length, 256 * 1024);
+
+  await assert.rejects(
+    () => service.readPackageFileContentForReview({}, 'assets/logo.png'),
+    /validation_failed/,
+  );
 });

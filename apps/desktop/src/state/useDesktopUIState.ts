@@ -535,6 +535,10 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     setModal({ type: "settings" });
   }, []);
 
+  const openConfirm = useCallback((input: Omit<NonNullable<ConfirmModalState>, "type">) => {
+    setConfirmModal({ type: "confirm", ...input });
+  }, []);
+
   const openToolEditor = useCallback((tool?: P1WorkspaceState["tools"][number]) => {
     setToolDraft(
       tool
@@ -680,6 +684,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     applyTargetDrafts,
     openConnectionStatus,
     openSettingsModal,
+    openConfirm,
     setNotificationFilter,
     setReviewTab,
     setPreferences,

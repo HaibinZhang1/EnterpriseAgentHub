@@ -15,7 +15,7 @@ import {
   Star,
   UserPlus
 } from "lucide-react";
-import type { DiscoveredLocalSkill, MarketFilters, PreferenceState, PublishDraft, PublisherSkillSummary, SkillSummary } from "../domain/p1";
+import type { DiscoveredLocalSkill, MarketFilters, PackageFileContent, PackageFileEntry, PreferenceState, PublishDraft, PublisherSkillSummary, SkillSummary } from "../domain/p1";
 import type { DesktopUIState } from "../state/useDesktopUIState";
 import { buildPublishPrecheck } from "../state/useDesktopUIState";
 import type { P1WorkspaceState } from "../state/useP1Workspace";
@@ -117,6 +117,247 @@ function formatMetricCount(value: number, language: "zh-CN" | "en-US") {
     compactDisplay: "short",
     maximumFractionDigits: value >= 1000 ? 1 : 0
   }).format(value);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderInlineMarkdown(value: string) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function renderMarkdownPreview(content: string) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const parts: string[] = [];
+  let paragraph: string[] = [];
+  let listItems: string[] = [];
+  let codeFence: string[] = [];
+  let inCodeFence = false;
+
+  function flushParagraph() {
+    if (paragraph.length === 0) return;
+    parts.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (listItems.length === 0) return;
+    parts.push(`<ul>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  }
+
+  function flushCodeFence() {
+    if (codeFence.length === 0) return;
+    parts.push(`<pre><code>${escapeHtml(codeFence.join("\n"))}</code></pre>`);
+    codeFence = [];
+  }
+
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      if (inCodeFence) {
+        flushCodeFence();
+        inCodeFence = false;
+      } else {
+        inCodeFence = true;
+      }
+      continue;
+    }
+
+    if (inCodeFence) {
+      codeFence.push(line);
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = headingMatch[1].length;
+      parts.push(`<h${level}>${renderInlineMarkdown(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*[-*]\s+(.*)$/);
+    if (listMatch) {
+      flushParagraph();
+      listItems.push(listMatch[1]);
+      continue;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    paragraph.push(line.trim());
+  }
+
+  flushParagraph();
+  flushList();
+  flushCodeFence();
+
+  return parts.join("");
+}
+
+function fileTypeLabel(fileType: PackageFileEntry["fileType"]) {
+  switch (fileType) {
+    case "markdown":
+      return "Markdown";
+    case "text":
+      return "Text";
+    default:
+      return "仅下载";
+  }
+}
+
+function defaultPreviewFile(files: PackageFileEntry[]) {
+  return files.find((file) => file.relativePath === "SKILL.md")
+    ?? files.find((file) => file.previewable)
+    ?? files[0]
+    ?? null;
+}
+
+function PackagePreviewPanel({
+  files,
+  packageURL,
+  downloadName,
+  loadContent,
+}: {
+  files: PackageFileEntry[];
+  packageURL?: string;
+  downloadName: string;
+  loadContent: (relativePath: string) => Promise<PackageFileContent>;
+}) {
+  const [selectedPath, setSelectedPath] = useState("");
+  const [content, setContent] = useState<PackageFileContent | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextDefault = defaultPreviewFile(files);
+    setSelectedPath((current) => (current && files.some((file) => file.relativePath === current) ? current : nextDefault?.relativePath ?? ""));
+  }, [files]);
+
+  const selectedFile = files.find((file) => file.relativePath === selectedPath) ?? null;
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedFile || !selectedFile.previewable) {
+      setContent(null);
+      setLoading(false);
+      setError(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setLoading(true);
+    setError(null);
+    loadContent(selectedFile.relativePath)
+      .then((result) => {
+        if (!active) return;
+        setContent(result);
+      })
+      .catch((loadError: unknown) => {
+        if (!active) return;
+        setContent(null);
+        setError(loadError instanceof Error ? loadError.message : "文件预览加载失败");
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [loadContent, selectedFile]);
+
+  if (files.length === 0) {
+    return <SectionEmpty title="当前提交没有可展示文件" body="上传包后，SKILL.md、README.md 和文本说明会出现在这里。" />;
+  }
+
+  return (
+    <section className="detail-block">
+      <h3>文件预览</h3>
+      <div className="package-preview-shell">
+        <div className="package-file-list" data-testid="package-file-list">
+          {files.map((file) => (
+            <button
+              key={file.relativePath}
+              className={selectedPath === file.relativePath ? "package-file-row active" : "package-file-row"}
+              data-testid="package-file-row"
+              data-file-path={file.relativePath}
+              onClick={() => setSelectedPath(file.relativePath)}
+            >
+              <span>
+                <strong>{file.relativePath}</strong>
+                <small>{fileTypeLabel(file.fileType)} · {Math.max(1, Math.round(file.sizeBytes / 1024))} KB</small>
+              </span>
+              <TagPill tone={file.previewable ? "info" : "warning"}>{file.previewable ? "可预览" : "下载查看"}</TagPill>
+            </button>
+          ))}
+        </div>
+        <div className="package-preview-pane" data-testid="package-file-preview">
+          {!selectedFile ? <SectionEmpty title="选择文件查看内容" body="优先支持 Markdown 和纯文本文件预览。" /> : null}
+          {selectedFile && !selectedFile.previewable ? (
+            <div className="stack-list">
+              <div className="callout warning">
+                <AlertTriangle size={16} />
+                <span>
+                  <strong>当前文件不支持在线预览</strong>
+                  <small>仅支持 `.md`、`.markdown`、`.txt`；其他文件请下载提交包查看。</small>
+                </span>
+              </div>
+              {packageURL ? (
+                <div className="inline-actions">
+                  <button className="btn btn-small" onClick={() => void downloadAuthenticatedFile(packageURL, downloadName)}>
+                    <Download size={14} />
+                    下载提交包
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {selectedFile?.previewable && loading ? <p>正在加载文件内容…</p> : null}
+          {selectedFile?.previewable && error ? <div className="callout warning"><AlertTriangle size={16} /> {error}</div> : null}
+          {selectedFile?.previewable && !loading && !error && content ? (
+            <div className="stack-list">
+              {content.truncated ? (
+                <div className="callout warning">
+                  <AlertTriangle size={16} />
+                  <span>
+                    <strong>内容已截断</strong>
+                    <small>当前仅展示前 256 KB 文本，完整内容请下载提交包查看。</small>
+                  </span>
+                </div>
+              ) : null}
+              {content.fileType === "markdown" ? (
+                <article
+                  className="markdown-preview"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(content.content) }}
+                />
+              ) : (
+                <pre className="text-preview">{content.content}</pre>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function discoveredLocationSummary(skill: DiscoveredLocalSkill) {
@@ -973,6 +1214,14 @@ function MyInstalledPage({ workspace, ui }: PageProps) {
       return <AuthGateCard title="登录后管理我发布的 Skill" body="发布、更新、权限变更和撤回都在登录后开放。" onLogin={() => workspace.requireAuth("my_installed")} />;
     }
 
+    const selectedSubmission = workspace.publisherData.selectedPublisherSubmission;
+    const loadSubmissionFileContent = async (relativePath: string) => {
+      if (!selectedSubmission) {
+        throw new Error("未选择提交记录");
+      }
+      return workspace.publisherData.getSubmissionFileContent(selectedSubmission.submissionID, relativePath);
+    };
+
     return (
       <div className="page-grid two-up">
         <section className="panel">
@@ -1014,6 +1263,60 @@ function MyInstalledPage({ workspace, ui }: PageProps) {
                   ) : null}
                   {skill.publishedSkillExists ? (
                     <>
+                      {skill.availableStatusActions.includes("delist") ? (
+                        <button
+                          className="btn btn-small"
+                          onClick={() => ui.openConfirm({
+                            title: `下架 ${skill.displayName}`,
+                            body: "下架后市场不再提供安装；已安装用户继续保留当前本地副本。",
+                            confirmLabel: "确认下架",
+                            tone: "danger",
+                            detailLines: [`当前状态：${skill.currentStatus ?? "未知"}`],
+                            onConfirm: async () => {
+                              ui.closeModal();
+                              await workspace.publisherData.delistPublisherSkill(skill.skillID);
+                            }
+                          })}
+                        >
+                          下架
+                        </button>
+                      ) : null}
+                      {skill.availableStatusActions.includes("relist") ? (
+                        <button
+                          className="btn btn-small"
+                          onClick={() => ui.openConfirm({
+                            title: `上架 ${skill.displayName}`,
+                            body: "上架后恢复市场可见与安装资格，仍以当前权限配置为准。",
+                            confirmLabel: "确认上架",
+                            tone: "primary",
+                            detailLines: [`当前状态：${skill.currentStatus ?? "未知"}`],
+                            onConfirm: async () => {
+                              ui.closeModal();
+                              await workspace.publisherData.relistPublisherSkill(skill.skillID);
+                            }
+                          })}
+                        >
+                          上架
+                        </button>
+                      ) : null}
+                      {skill.availableStatusActions.includes("archive") ? (
+                        <button
+                          className="btn btn-danger btn-small"
+                          onClick={() => ui.openConfirm({
+                            title: `归档 ${skill.displayName}`,
+                            body: "归档后该 Skill 不可再次上架，请确认当前版本已经不再作为活跃 Skill 维护。",
+                            confirmLabel: "确认归档",
+                            tone: "danger",
+                            detailLines: [`当前状态：${skill.currentStatus ?? "未知"}`],
+                            onConfirm: async () => {
+                              ui.closeModal();
+                              await workspace.publisherData.archivePublisherSkill(skill.skillID);
+                            }
+                          })}
+                        >
+                          <Archive size={14} />归档
+                        </button>
+                      ) : null}
                       <button className="btn btn-small" onClick={() => resetDraft("update", skill)}>发布新版本</button>
                       <button className="btn btn-small" onClick={() => resetDraft("permission_change", skill)}>修改权限</button>
                     </>
@@ -1027,47 +1330,53 @@ function MyInstalledPage({ workspace, ui }: PageProps) {
         </section>
 
         <section className="panel" data-testid="publisher-submission-detail">
-          {!workspace.publisherData.selectedPublisherSubmission ? (
+          {!selectedSubmission ? (
             <SectionEmpty title="选择一条提交查看详情" body="这里会显示预检查结果、下载包、历史时间线和当前可执行动作。" />
           ) : (
             <>
               <div className="section-heading">
                 <div>
                   <div className="eyebrow">提交详情</div>
-                  <h2>{workspace.publisherData.selectedPublisherSubmission.displayName}</h2>
+                  <h2>{selectedSubmission.displayName}</h2>
                 </div>
-                <TagPill tone="info">{submissionTypeLabel(workspace.publisherData.selectedPublisherSubmission.submissionType)}</TagPill>
+                <TagPill tone="info">{submissionTypeLabel(selectedSubmission.submissionType)}</TagPill>
               </div>
-              <p>{workspace.publisherData.selectedPublisherSubmission.description}</p>
+              <p>{selectedSubmission.description}</p>
               <div className="definition-grid split">
-                <div><dt>状态</dt><dd>{workflowStateLabel(workspace.publisherData.selectedPublisherSubmission.workflowState)}</dd></div>
-                <div><dt>版本</dt><dd>{workspace.publisherData.selectedPublisherSubmission.version}</dd></div>
-                <div><dt>公开级别</dt><dd>{workspace.publisherData.selectedPublisherSubmission.visibilityLevel}</dd></div>
-                <div><dt>授权范围</dt><dd>{workspace.publisherData.selectedPublisherSubmission.scopeType}</dd></div>
+                <div><dt>状态</dt><dd>{workflowStateLabel(selectedSubmission.workflowState)}</dd></div>
+                <div><dt>版本</dt><dd>{selectedSubmission.version}</dd></div>
+                <div><dt>公开级别</dt><dd>{selectedSubmission.visibilityLevel}</dd></div>
+                <div><dt>授权范围</dt><dd>{selectedSubmission.scopeType}</dd></div>
               </div>
-              {workspace.publisherData.selectedPublisherSubmission.packageURL ? (
+              {selectedSubmission.packageURL ? (
                 <div className="inline-actions wrap">
                   <button
                     className="btn btn-small"
                     onClick={() => void downloadAuthenticatedFile(
-                      workspace.publisherData.selectedPublisherSubmission?.packageURL ?? "",
-                      `${workspace.publisherData.selectedPublisherSubmission?.skillID ?? "submission"}.zip`
+                      selectedSubmission.packageURL ?? "",
+                      `${selectedSubmission.skillID ?? "submission"}.zip`
                     )}
                   >
                     <Download size={14} /> 下载提交包
                   </button>
-                  {workspace.publisherData.selectedPublisherSubmission.canWithdraw ? (
-                    <button className="btn btn-small" onClick={() => void workspace.publisherData.withdrawPublisherSubmission(workspace.publisherData.selectedPublisherSubmission?.submissionID ?? "")}>撤回提交</button>
+                  {selectedSubmission.canWithdraw ? (
+                    <button className="btn btn-small" onClick={() => void workspace.publisherData.withdrawPublisherSubmission(selectedSubmission.submissionID ?? "")}>撤回提交</button>
                   ) : null}
                 </div>
               ) : null}
+              <PackagePreviewPanel
+                files={selectedSubmission.packageFiles}
+                packageURL={selectedSubmission.packageURL}
+                downloadName={`${selectedSubmission.skillID}.zip`}
+                loadContent={loadSubmissionFileContent}
+              />
               <div className="detail-block">
                 <h3>预检查结果</h3>
-                {workspace.publisherData.selectedPublisherSubmission.precheckResults.length === 0 ? (
+                {selectedSubmission.precheckResults.length === 0 ? (
                   <p>等待系统初审。</p>
                 ) : (
                   <div className="stack-list compact">
-                    {workspace.publisherData.selectedPublisherSubmission.precheckResults.map((item) => (
+                    {selectedSubmission.precheckResults.map((item) => (
                       <div className="history-row" key={item.id}>
                         <strong>{item.label}</strong>
                         <span>{item.status === "pass" ? "通过" : "待人工复核"}</span>
@@ -1080,7 +1389,7 @@ function MyInstalledPage({ workspace, ui }: PageProps) {
               <div className="detail-block">
                 <h3>历史时间线</h3>
                 <div className="history-list">
-                  {workspace.publisherData.selectedPublisherSubmission.history.map((history) => (
+                  {selectedSubmission.history.map((history) => (
                     <div className="history-row" key={history.historyID}>
                       <strong>{history.action}</strong>
                       <span>{history.actorName}</span>
@@ -1224,6 +1533,14 @@ function ReviewPage({ workspace, ui }: PageProps) {
 
   const riskCopy = { low: "低", medium: "中", high: "高", unknown: "未知" } as const;
   const [decisionComment, setDecisionComment] = useState("");
+  const selectedReview = workspace.adminData.selectedReview;
+
+  const loadReviewFileContent = async (relativePath: string) => {
+    if (!selectedReview) {
+      throw new Error("未选择审核单");
+    }
+    return workspace.adminData.getReviewFileContent(selectedReview.reviewID, relativePath);
+  };
 
   function runReviewAction(action: "claim" | "pass_precheck" | "approve" | "return_for_changes" | "reject" | "withdraw", reviewID: string) {
     switch (action) {
@@ -1311,53 +1628,59 @@ function ReviewPage({ workspace, ui }: PageProps) {
       </div>
 
       <section className="panel" data-testid="review-detail-panel">
-        {!workspace.adminData.selectedReview ? <SectionEmpty title="选择一条审核单查看详情" body="这里会显示预检查结果、提交包下载与可执行动作。" /> : (
+        {!selectedReview ? <SectionEmpty title="选择一条审核单查看详情" body="这里会显示预检查结果、提交包下载与可执行动作。" /> : (
           <>
             <div className="section-heading">
               <div>
                 <div className="eyebrow">审核详情</div>
-                <h2>{workspace.adminData.selectedReview.skillDisplayName}</h2>
+                <h2>{selectedReview.skillDisplayName}</h2>
               </div>
               <div className="pill-row">
-                <TagPill tone="info">{submissionTypeLabel(workspace.adminData.selectedReview.reviewType)}</TagPill>
-                <TagPill tone={workspace.adminData.selectedReview.workflowState === "published" ? "success" : workspace.adminData.selectedReview.workflowState === "manual_precheck" ? "warning" : "info"}>
-                  {workflowStateLabel(workspace.adminData.selectedReview.workflowState)}
+                <TagPill tone="info">{submissionTypeLabel(selectedReview.reviewType)}</TagPill>
+                <TagPill tone={selectedReview.workflowState === "published" ? "success" : selectedReview.workflowState === "manual_precheck" ? "warning" : "info"}>
+                  {workflowStateLabel(selectedReview.workflowState)}
                 </TagPill>
               </div>
             </div>
-            <p>{workspace.adminData.selectedReview.description}</p>
+            <p>{selectedReview.description}</p>
             <div className="definition-grid split">
-              <div><dt>提交人</dt><dd>{workspace.adminData.selectedReview.submitterName}</dd></div>
-              <div><dt>部门</dt><dd>{workspace.adminData.selectedReview.submitterDepartmentName}</dd></div>
-              <div><dt>状态</dt><dd>{workflowStateLabel(workspace.adminData.selectedReview.workflowState)}</dd></div>
-              <div><dt>当前审核人</dt><dd>{workspace.adminData.selectedReview.currentReviewerName ?? "未锁定"}</dd></div>
+              <div><dt>提交人</dt><dd>{selectedReview.submitterName}</dd></div>
+              <div><dt>部门</dt><dd>{selectedReview.submitterDepartmentName}</dd></div>
+              <div><dt>状态</dt><dd>{workflowStateLabel(selectedReview.workflowState)}</dd></div>
+              <div><dt>当前审核人</dt><dd>{selectedReview.currentReviewerName ?? "未锁定"}</dd></div>
             </div>
             <div className="definition-grid split">
-              <div><dt>当前版本</dt><dd>{workspace.adminData.selectedReview.currentVersion ?? "-"}</dd></div>
-              <div><dt>目标版本</dt><dd>{workspace.adminData.selectedReview.requestedVersion ?? "-"}</dd></div>
-              <div><dt>当前公开级别</dt><dd>{workspace.adminData.selectedReview.currentVisibilityLevel ?? "-"}</dd></div>
-              <div><dt>目标公开级别</dt><dd>{workspace.adminData.selectedReview.requestedVisibilityLevel ?? "-"}</dd></div>
+              <div><dt>当前版本</dt><dd>{selectedReview.currentVersion ?? "-"}</dd></div>
+              <div><dt>目标版本</dt><dd>{selectedReview.requestedVersion ?? "-"}</dd></div>
+              <div><dt>当前公开级别</dt><dd>{selectedReview.currentVisibilityLevel ?? "-"}</dd></div>
+              <div><dt>目标公开级别</dt><dd>{selectedReview.requestedVisibilityLevel ?? "-"}</dd></div>
             </div>
-            {workspace.adminData.selectedReview.packageURL ? (
+            {selectedReview.packageURL ? (
               <div className="inline-actions wrap">
                 <button
                   className="btn btn-small"
                   onClick={() => void downloadAuthenticatedFile(
-                    workspace.adminData.selectedReview?.packageURL ?? "",
-                    `${workspace.adminData.selectedReview?.skillID ?? "review"}.zip`
+                    selectedReview.packageURL ?? "",
+                    `${selectedReview.skillID ?? "review"}.zip`
                   )}
                 >
                   <Download size={14} /> 下载提交包
                 </button>
               </div>
             ) : null}
+            <PackagePreviewPanel
+              files={selectedReview.packageFiles}
+              packageURL={selectedReview.packageURL}
+              downloadName={`${selectedReview.skillID}.zip`}
+              loadContent={loadReviewFileContent}
+            />
             <div className="detail-block">
               <h3>预检查结果</h3>
-              {workspace.adminData.selectedReview.precheckResults.length === 0 ? (
+              {selectedReview.precheckResults.length === 0 ? (
                 <p>系统初审尚未返回结果。</p>
               ) : (
                 <div className="stack-list compact">
-                  {workspace.adminData.selectedReview.precheckResults.map((item) => (
+                  {selectedReview.precheckResults.map((item) => (
                     <div className="history-row" key={item.id}>
                       <strong>{item.label}</strong>
                       <span>{item.status === "pass" ? "通过" : "待人工复核"}</span>
@@ -1367,10 +1690,10 @@ function ReviewPage({ workspace, ui }: PageProps) {
                 </div>
               )}
             </div>
-            {workspace.adminData.selectedReview.reviewSummary ? (
+            {selectedReview.reviewSummary ? (
               <div className="detail-block">
                 <h3>审核摘要</h3>
-                <p>{workspace.adminData.selectedReview.reviewSummary}</p>
+                <p>{selectedReview.reviewSummary}</p>
               </div>
             ) : null}
             <div className="detail-block">
@@ -1380,12 +1703,12 @@ function ReviewPage({ workspace, ui }: PageProps) {
                 <textarea value={decisionComment} data-testid="review-comment" onChange={(event) => setDecisionComment(event.target.value)} rows={3} placeholder="补充审核意见、退回原因或通过说明" />
               </label>
               <div className="inline-actions wrap">
-                {workspace.adminData.selectedReview.availableActions.map((action) => (
+                {selectedReview.availableActions.map((action) => (
                   <button
                     className={action === "approve" || action === "pass_precheck" ? "btn btn-primary btn-small" : "btn btn-small"}
                     key={action}
                     data-testid={`review-action-${action}`}
-                    onClick={() => runReviewAction(action, workspace.adminData.selectedReview?.reviewID ?? "")}
+                    onClick={() => runReviewAction(action, selectedReview.reviewID ?? "")}
                   >
                     {reviewActionLabel(action)}
                   </button>
@@ -1395,7 +1718,7 @@ function ReviewPage({ workspace, ui }: PageProps) {
             <div className="detail-block">
               <h3>历史时间线</h3>
               <div className="history-list">
-                {workspace.adminData.selectedReview.history.map((history) => (
+                {selectedReview.history.map((history) => (
                   <div className="history-row" key={history.historyID}>
                     <strong>{history.action}</strong>
                     <span>{history.actorName}</span>
@@ -1436,7 +1759,7 @@ function DepartmentTree({
   );
 }
 
-function ManagePage({ workspace }: PageProps) {
+function ManagePage({ workspace, ui }: PageProps) {
   const [createDepartmentName, setCreateDepartmentName] = useState("");
   const [renameDepartmentName, setRenameDepartmentName] = useState("");
   const [newUser, setNewUser] = useState({
@@ -1632,12 +1955,60 @@ function ManagePage({ workspace }: PageProps) {
                   <td><span className="table-meta">Star {skill.starCount} · 下载 {skill.downloadCount}</span></td>
                   <td>
                     <div className="inline-actions wrap">
-                      {skill.status !== "delisted" ? (
-                        <button className="btn btn-small" onClick={() => void workspace.adminData.delistAdminSkill(skill.skillID)}>下架</button>
-                      ) : (
-                        <button className="btn btn-small" onClick={() => void workspace.adminData.relistAdminSkill(skill.skillID)}>上架</button>
-                      )}
-                      <button className="btn btn-danger btn-small" onClick={() => void workspace.adminData.archiveAdminSkill(skill.skillID)}><Archive size={14} />归档</button>
+                      {skill.status === "published" ? (
+                        <button
+                          className="btn btn-small"
+                          onClick={() => ui.openConfirm({
+                            title: `下架 ${skill.displayName}`,
+                            body: "下架后市场不再对新用户提供安装，已安装用户继续保留当前本地副本。",
+                            confirmLabel: "确认下架",
+                            tone: "danger",
+                            detailLines: [`当前状态：${skill.status}`],
+                            onConfirm: async () => {
+                              ui.closeModal();
+                              await workspace.adminData.delistAdminSkill(skill.skillID);
+                            }
+                          })}
+                        >
+                          下架
+                        </button>
+                      ) : null}
+                      {skill.status === "delisted" ? (
+                        <button
+                          className="btn btn-small"
+                          onClick={() => ui.openConfirm({
+                            title: `上架 ${skill.displayName}`,
+                            body: "上架后恢复市场可见与安装资格，仍按当前权限配置生效。",
+                            confirmLabel: "确认上架",
+                            tone: "primary",
+                            detailLines: [`当前状态：${skill.status}`],
+                            onConfirm: async () => {
+                              ui.closeModal();
+                              await workspace.adminData.relistAdminSkill(skill.skillID);
+                            }
+                          })}
+                        >
+                          上架
+                        </button>
+                      ) : null}
+                      {skill.status !== "archived" ? (
+                        <button
+                          className="btn btn-danger btn-small"
+                          onClick={() => ui.openConfirm({
+                            title: `归档 ${skill.displayName}`,
+                            body: "归档后该 Skill 不可再次上架，请确认不再作为活跃 Skill 维护。",
+                            confirmLabel: "确认归档",
+                            tone: "danger",
+                            detailLines: [`当前状态：${skill.status}`],
+                            onConfirm: async () => {
+                              ui.closeModal();
+                              await workspace.adminData.archiveAdminSkill(skill.skillID);
+                            }
+                          })}
+                        >
+                          <Archive size={14} />归档
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

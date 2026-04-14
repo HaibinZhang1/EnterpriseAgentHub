@@ -69,6 +69,69 @@ test("happy path publishes same skill through review and exposes installable mar
   }
 });
 
+test("author and reviewer can preview package docs and author can delist relist archive", async ({ browser, page }) => {
+  const skillID = `closure-govern-${runSuffix}`;
+  const displayName = `Closure Govern ${runSuffix}`;
+  const packageDir = createSkillDirectory(skillID, "1.0.0", "Governance package body");
+  const zipPath = await zipPackageDir(packageDir, `${skillID}.zip`);
+
+  try {
+    await loginAs(page, authorCredentials);
+    await openPublishTab(page);
+    await publishSkill(page, {
+      skillID,
+      displayName,
+      version: "1.0.0",
+      description: "Governance preview skill",
+      visibility: "public_installable",
+      zipPath,
+      tags: "closure,govern",
+      tools: "codex",
+      systems: "macos,windows",
+    });
+
+    const adminPage = await loginInNewContext(browser, adminCredentials);
+    try {
+      await approveReviewForSkill(adminPage, skillID, "Governance approved");
+      await expect(adminPage.getByTestId("package-file-list")).toContainText("SKILL.md");
+      await expect(adminPage.getByTestId("package-file-preview")).toContainText(skillID);
+      await adminPage.locator('[data-testid="package-file-row"][data-file-path="assets/notes.txt"]').click();
+      await expect(adminPage.getByTestId("package-file-preview")).toContainText(`${skillID}:1.0.0`);
+    } finally {
+      await adminPage.context().close();
+    }
+
+    await waitForMarketVisibility(skillID, authorCredentials);
+    await page.reload();
+    await page.getByTestId("nav-my_installed").click();
+    await page.getByTestId("my-skills-published-tab").click();
+    const publisherRow = page.locator(`[data-testid="publisher-skill-row"][data-skill-id="${skillID}"]`);
+    await publisherRow.getByRole("button", { name: "查看详情" }).click();
+    await expect(page.getByTestId("package-file-list")).toContainText("SKILL.md");
+    await page.locator('[data-testid="package-file-row"][data-file-path="assets/notes.txt"]').click();
+    await expect(page.getByTestId("package-file-preview")).toContainText(`${skillID}:1.0.0`);
+
+    await publisherRow.getByRole("button", { name: "下架" }).click();
+    await page.getByRole("button", { name: "确认下架" }).click();
+    await expect.poll(async () => marketResultCount(skillID, await loginToken(authorCredentials)), { timeout: 30_000 }).toBe(0);
+    await expect(publisherRow.getByRole("button", { name: "上架" })).toBeVisible();
+
+    await publisherRow.getByRole("button", { name: "上架" }).click();
+    await page.getByRole("button", { name: "确认上架" }).click();
+    await expect.poll(async () => marketResultCount(skillID, await loginToken(authorCredentials)), { timeout: 30_000 }).toBeGreaterThan(0);
+    await expect(publisherRow.getByRole("button", { name: "下架" })).toBeVisible();
+
+    await publisherRow.getByRole("button", { name: "归档" }).click();
+    await page.getByRole("button", { name: "确认归档" }).click();
+    await expect.poll(async () => marketResultCount(skillID, await loginToken(authorCredentials)), { timeout: 30_000 }).toBe(0);
+    await expect(publisherRow.getByRole("button", { name: "下架" })).toHaveCount(0);
+    await expect(publisherRow.getByRole("button", { name: "上架" })).toHaveCount(0);
+  } finally {
+    cleanupDir(packageDir);
+    cleanupDir(path.dirname(zipPath));
+  }
+});
+
 test("return and resubmit flow publishes after second review", async ({ browser, page }) => {
   const skillID = `closure-return-${runSuffix}`;
   const displayName = `Closure Return ${runSuffix}`;

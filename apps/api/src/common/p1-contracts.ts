@@ -63,6 +63,8 @@ export type PublishScopeType =
 export type SubmissionType = ReviewType;
 export type ReviewDecision = 'approve' | 'return_for_changes' | 'reject' | 'withdraw';
 export type ReviewAction = 'claim' | 'pass_precheck' | 'approve' | 'return_for_changes' | 'reject' | 'withdraw';
+export type PublisherStatusAction = 'delist' | 'relist' | 'archive';
+export type PackagePreviewFileType = 'markdown' | 'text' | 'other';
 
 export interface PageQuery {
   page?: number;
@@ -239,6 +241,20 @@ export interface ReviewPrecheckItemDto {
   message: string;
 }
 
+export interface PackageFileEntryDto {
+  relativePath: string;
+  fileType: PackagePreviewFileType;
+  sizeBytes: number;
+  previewable: boolean;
+}
+
+export interface PackageFileContentDto {
+  relativePath: string;
+  fileType: PackagePreviewFileType;
+  content: string;
+  truncated: boolean;
+}
+
 export interface ReviewItemDto {
   reviewID: string;
   skillID: string;
@@ -275,6 +291,7 @@ export interface ReviewDetailDto extends ReviewItemDto {
   packageHash?: string;
   packageSize?: number;
   packageFileCount?: number;
+  packageFiles: PackageFileEntryDto[];
   history: ReviewHistoryDto[];
 }
 
@@ -298,6 +315,7 @@ export interface PublisherSkillSummaryDto {
   submittedAt?: string | null;
   updatedAt: string;
   canWithdraw: boolean;
+  availableStatusActions: PublisherStatusAction[];
 }
 
 export interface PublisherSubmissionDetailDto {
@@ -324,6 +342,7 @@ export interface PublisherSubmissionDetailDto {
   packageHash?: string;
   packageSize?: number;
   packageFileCount?: number;
+  packageFiles: PackageFileEntryDto[];
   submittedAt: string;
   updatedAt: string;
   canWithdraw: boolean;

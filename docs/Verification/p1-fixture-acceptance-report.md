@@ -25,7 +25,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 node --test tests/smoke/p1-real-delivery-static.test.mjs
 ```
 
-Current result: all pass on 2026-04-12.
+Current result: all pass on 2026-04-13, aligned with `verification/reports/p1-verification-report.md`.
 
 ## Evidence Checklist
 
@@ -39,4 +39,4 @@ Current result: all pass on 2026-04-12.
 
 ## Remaining Risk
 
-The fixtures prove transformation and distribution semantics, but full Windows filesystem behavior still needs a Windows host run because symlink privilege and NSIS packaging are platform-dependent.
+The fixtures prove transformation and distribution semantics in the repository verification lane, but full Windows filesystem behavior still needs a Windows host run because symlink privilege and NSIS packaging are platform-dependent.
