@@ -149,6 +149,20 @@ export const ReviewAction = {
 } as const;
 export type ReviewAction = (typeof ReviewAction)[keyof typeof ReviewAction];
 
+export const PublisherStatusAction = {
+  Delist: "delist",
+  Relist: "relist",
+  Archive: "archive"
+} as const;
+export type PublisherStatusAction = (typeof PublisherStatusAction)[keyof typeof PublisherStatusAction];
+
+export const PackagePreviewFileType = {
+  Markdown: "markdown",
+  Text: "text",
+  Other: "other"
+} as const;
+export type PackagePreviewFileType = (typeof PackagePreviewFileType)[keyof typeof PackagePreviewFileType];
+
 export const ApiErrorCode = {
   Unauthenticated: "unauthenticated",
   PermissionDenied: "permission_denied",
@@ -490,6 +504,20 @@ export interface ReviewHistory {
   readonly createdAt: ISODateTimeString;
 }
 
+export interface PackageFileEntry {
+  readonly relativePath: string;
+  readonly fileType: PackagePreviewFileType;
+  readonly sizeBytes: number;
+  readonly previewable: boolean;
+}
+
+export interface PackageFileContent {
+  readonly relativePath: string;
+  readonly fileType: PackagePreviewFileType;
+  readonly content: string;
+  readonly truncated: boolean;
+}
+
 export interface ReviewDetail extends ReviewItem {
   readonly description: string;
   readonly reviewSummary?: string;
@@ -503,6 +531,7 @@ export interface ReviewDetail extends ReviewItem {
   readonly packageHash?: `sha256:${string}` | string;
   readonly packageSize?: number;
   readonly packageFileCount?: number;
+  readonly packageFiles: readonly PackageFileEntry[];
   readonly history: readonly ReviewHistory[];
 }
 
@@ -533,6 +562,7 @@ export interface PublisherSkillSummary {
   readonly submittedAt?: ISODateTimeString | null;
   readonly updatedAt: ISODateTimeString;
   readonly canWithdraw: boolean;
+  readonly availableStatusActions: readonly PublisherStatusAction[];
 }
 
 export interface PublisherSubmissionDetail {
@@ -559,6 +589,7 @@ export interface PublisherSubmissionDetail {
   readonly packageHash?: `sha256:${string}` | string;
   readonly packageSize?: number;
   readonly packageFileCount?: number;
+  readonly packageFiles: readonly PackageFileEntry[];
   readonly submittedAt: ISODateTimeString;
   readonly updatedAt: ISODateTimeString;
   readonly canWithdraw: boolean;

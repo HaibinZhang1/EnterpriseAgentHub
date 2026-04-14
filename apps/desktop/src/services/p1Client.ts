@@ -8,6 +8,7 @@ import type {
   LocalNotification,
   MarketFilters,
   MenuPermission,
+  PackageFileContent,
   PageID,
   PublisherSkillSummary,
   PublisherSubmissionDetail,
@@ -278,11 +279,18 @@ export interface P1Client {
   relistAdminSkill(skillID: string): Promise<AdminSkill[]>;
   archiveAdminSkill(skillID: string): Promise<void>;
   listPublisherSkills(): Promise<PublisherSkillSummary[]>;
+  delistPublisherSkill(skillID: string): Promise<PublisherSkillSummary[]>;
+  relistPublisherSkill(skillID: string): Promise<PublisherSkillSummary[]>;
+  archivePublisherSkill(skillID: string): Promise<PublisherSkillSummary[]>;
   getPublisherSubmission(submissionID: string): Promise<PublisherSubmissionDetail>;
+  listPublisherSubmissionFiles(submissionID: string): Promise<PublisherSubmissionDetail["packageFiles"]>;
+  getPublisherSubmissionFileContent(submissionID: string, relativePath: string): Promise<PackageFileContent>;
   submitPublisherSubmission(formData: FormData): Promise<PublisherSubmissionDetail>;
   withdrawPublisherSubmission(submissionID: string): Promise<PublisherSubmissionDetail>;
   listReviews(): Promise<ReviewItem[]>;
   getReview(reviewID: string): Promise<ReviewDetail>;
+  listReviewFiles(reviewID: string): Promise<ReviewDetail["packageFiles"]>;
+  getReviewFileContent(reviewID: string, relativePath: string): Promise<PackageFileContent>;
   claimReview(reviewID: string): Promise<ReviewDetail>;
   passPrecheck(reviewID: string, comment: string): Promise<ReviewDetail>;
   approveReview(reviewID: string, comment: string): Promise<ReviewDetail>;
@@ -464,8 +472,34 @@ export const p1Client: P1Client = {
     return requestJSON<PublisherSkillSummary[]>("/publisher/skills");
   },
 
+  async delistPublisherSkill(skillID) {
+    return requestJSON<PublisherSkillSummary[]>(`/publisher/skills/${encodeURIComponent(skillID)}/delist`, {
+      method: "POST"
+    });
+  },
+
+  async relistPublisherSkill(skillID) {
+    return requestJSON<PublisherSkillSummary[]>(`/publisher/skills/${encodeURIComponent(skillID)}/relist`, {
+      method: "POST"
+    });
+  },
+
+  async archivePublisherSkill(skillID) {
+    return requestJSON<PublisherSkillSummary[]>(`/publisher/skills/${encodeURIComponent(skillID)}/archive`, {
+      method: "POST"
+    });
+  },
+
   async getPublisherSubmission(submissionID) {
     return requestJSON<PublisherSubmissionDetail>(`/publisher/submissions/${encodeURIComponent(submissionID)}`);
+  },
+
+  async listPublisherSubmissionFiles(submissionID) {
+    return requestJSON<PublisherSubmissionDetail["packageFiles"]>(`/publisher/submissions/${encodeURIComponent(submissionID)}/files`);
+  },
+
+  async getPublisherSubmissionFileContent(submissionID, relativePath) {
+    return requestJSON<PackageFileContent>(`/publisher/submissions/${encodeURIComponent(submissionID)}/file-content?path=${encodeURIComponent(relativePath)}`);
   },
 
   async submitPublisherSubmission(formData) {
@@ -487,6 +521,14 @@ export const p1Client: P1Client = {
 
   async getReview(reviewID) {
     return requestJSON<ReviewDetail>(`/admin/reviews/${encodeURIComponent(reviewID)}`);
+  },
+
+  async listReviewFiles(reviewID) {
+    return requestJSON<ReviewDetail["packageFiles"]>(`/admin/reviews/${encodeURIComponent(reviewID)}/files`);
+  },
+
+  async getReviewFileContent(reviewID, relativePath) {
+    return requestJSON<PackageFileContent>(`/admin/reviews/${encodeURIComponent(reviewID)}/file-content?path=${encodeURIComponent(relativePath)}`);
   },
 
   async claimReview(reviewID) {

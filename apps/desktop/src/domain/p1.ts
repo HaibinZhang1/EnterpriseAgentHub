@@ -49,6 +49,8 @@ export type PublishScopeType = "current_department" | "department_tree" | "selec
 export type SubmissionType = ReviewType;
 export type ReviewDecision = "approve" | "return_for_changes" | "reject" | "withdraw";
 export type ReviewAction = "claim" | "pass_precheck" | "approve" | "return_for_changes" | "reject" | "withdraw";
+export type PublisherStatusAction = "delist" | "relist" | "archive";
+export type PackagePreviewFileType = "markdown" | "text" | "other";
 export type AuthState = "guest" | "authenticated";
 export type SettingsLanguage = "auto" | "zh-CN" | "en-US";
 export type SettingsTheme = "classic" | "fresh" | "contrast";
@@ -504,6 +506,20 @@ export interface ReviewHistory {
   createdAt: string;
 }
 
+export interface PackageFileEntry {
+  relativePath: string;
+  fileType: PackagePreviewFileType;
+  sizeBytes: number;
+  previewable: boolean;
+}
+
+export interface PackageFileContent {
+  relativePath: string;
+  fileType: PackagePreviewFileType;
+  content: string;
+  truncated: boolean;
+}
+
 export interface ReviewPrecheckItem {
   id: string;
   label: string;
@@ -524,6 +540,7 @@ export interface ReviewDetail extends ReviewItem {
   packageHash?: string;
   packageSize?: number;
   packageFileCount?: number;
+  packageFiles: PackageFileEntry[];
   history: ReviewHistory[];
 }
 
@@ -547,6 +564,7 @@ export interface PublisherSkillSummary {
   submittedAt?: string | null;
   updatedAt: string;
   canWithdraw: boolean;
+  availableStatusActions: PublisherStatusAction[];
 }
 
 export interface PublisherSubmissionDetail {
@@ -573,6 +591,7 @@ export interface PublisherSubmissionDetail {
   packageHash?: string;
   packageSize?: number;
   packageFileCount?: number;
+  packageFiles: PackageFileEntry[];
   submittedAt: string;
   updatedAt: string;
   canWithdraw: boolean;

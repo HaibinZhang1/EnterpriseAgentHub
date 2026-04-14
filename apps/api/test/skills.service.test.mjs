@@ -91,7 +91,7 @@ test('SkillsService.list executes the database plan and maps paged rows to summa
 
   assert.equal(calls.length, 1);
   assert.match(calls[0].text, /LIMIT \$2\s+OFFSET \$3/);
-  assert.deepEqual(calls[0].values, ['codex', 5, 0]);
+  assert.deepEqual(calls[0].values, ['codex', 100, 0]);
   assert.equal(page.page, 1);
   assert.equal(page.pageSize, 5);
   assert.equal(page.total, 1);
@@ -101,4 +101,67 @@ test('SkillsService.list executes the database plan and maps paged rows to summa
   assert.equal(page.items[0].installState, 'not_installed');
   assert.equal(page.items[0].starCount, 12);
   assert.equal(page.items[0].downloadCount, 33);
+});
+
+test('SkillsService.list excludes delisted rows from market results', async () => {
+  const database = {
+    async query() {
+      return {
+        rows: [
+          {
+            id: 'skill-row-1',
+            skill_id: 'codex-review-helper',
+            display_name: 'Codex Review Helper',
+            description: 'published',
+            status: 'published',
+            visibility_level: 'public_installable',
+            category: 'engineering',
+            updated_at: new Date('2026-04-11T02:30:00Z'),
+            version: '1.2.0',
+            risk_level: 'low',
+            risk_description: null,
+            review_summary: null,
+            published_at: new Date('2026-04-11T02:30:00Z'),
+            author_name: '李四',
+            author_department: '前端组',
+            tags: ['codex'],
+            compatible_tools: ['codex'],
+            compatible_systems: ['macos'],
+            star_count: '12',
+            download_count: '33',
+            total_count: '2',
+          },
+          {
+            id: 'skill-row-2',
+            skill_id: 'legacy-runbook',
+            display_name: 'Legacy Runbook',
+            description: 'delisted',
+            status: 'delisted',
+            visibility_level: 'public_installable',
+            category: 'ops',
+            updated_at: new Date('2026-04-11T02:30:00Z'),
+            version: '1.0.0',
+            risk_level: 'low',
+            risk_description: null,
+            review_summary: null,
+            published_at: new Date('2026-04-11T02:30:00Z'),
+            author_name: '王五',
+            author_department: '运维组',
+            tags: ['ops'],
+            compatible_tools: ['codex'],
+            compatible_systems: ['macos'],
+            star_count: '1',
+            download_count: '2',
+            total_count: '2',
+          },
+        ],
+      };
+    },
+  };
+
+  const service = new SkillsService(database);
+  const page = await service.list({ page: '1', pageSize: '10' });
+
+  assert.equal(page.total, 1);
+  assert.deepEqual(page.items.map((item) => item.skillID), ['codex-review-helper']);
 });

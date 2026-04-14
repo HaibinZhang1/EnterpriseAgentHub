@@ -2,14 +2,16 @@
 
 ## 文档信息
 - 文档名称：企业内部 Agent Skills 管理市场需求说明
-- 文档版本：V1.3
-- 当前状态：Desktop/API/Tauri 主链已落地；Windows 安装包与 Linux live 部署仍待实机验收
+- 文档版本：V1.4
+- 当前状态：Desktop/API/Tauri 主链、作者治理闭环、审核/管理入口已落地；Windows 安装包与 Linux live 部署仍待目标环境验收
 - 适用范围：企业内网部署场景，Desktop/Tauri 桌面客户端为主，Windows 安装包交付优先，服务端部署到 Linux 服务器
 - 说明：本文档聚焦前端页面、功能、交互、权限、状态、业务规则与 Skill 包规范；不展开技术栈、数据库与接口实现细节。
 
 > 当前交付边界（2026-04-13）：正式桌面交付仍以 Windows exe 为主，服务端部署仍以 Linux 服务器为目标并优先选择简单、兼容性高的方案。真实 API `download-ticket` -> Tauri 安装/更新 -> Central Store + SQLite -> 启用 -> 重启恢复的最小闭环已经验证；Desktop runtime 已完成 Windows/macOS 平台适配层收敛。剩余缺口集中在 Windows exe 打包、Linux live 部署，以及 Windows/macOS 实机验收。
 
 > 交付入口口径（2026-04-12）：真实产品前端固定为 `apps/desktop`。`ui-prototype/` 只作为原型 UI/文案/信息架构参考，不作为交付界面、联调入口或验收依据。凡涉及登录、市场、通知、管理员权限和服务连接状态的能力，均以 live 服务端返回为准，不允许前端用 mock 或假远端数据兜底。
+
+> 规范口径（2026-04-14）：`20_p1_desktop_prd.md`、`21_p1_data_contract.md`、`22_p1_tool_adapter_contract.md`、`23_p1_interaction_spec.md` 是**当前版本规范源文档**。`01`-`18` 号文档继续保留业务背景、页面拆解和补充规则；若与 `20`-`23` 发生冲突，以 `20`-`23` 为准。
 
 ## 当前实现约束
 
@@ -37,8 +39,8 @@
 | 06 | [页面架构与导航](06_page_architecture.md) | 页面列表、导航布局、角色菜单差异、跳转关系 |
 | 07 | [页面：首页](07_page_home.md) | 首页模块、待办、快捷入口、推荐内容 |
 | 08 | [页面：市场](08_page_market.md) | 搜索、筛选、排序、卡片、详情页、排行榜 |
-| 09 | [页面：我的 Skill](09_page_myskill.md) | 已安装、我发布的、发布 Skill、权限修改 |
-| 10 | [页面：审核](10_page_review.md) | 审核工作台、待审核、审核详情、SLA |
+| 09 | [页面：我的 Skill](09_page_myskill.md) | 已安装、我发布的、发布 Skill、作者治理与提交详情 |
+| 10 | [页面：审核](10_page_review.md) | 审核工作台、待审核、审核详情、文件预览、SLA |
 | 11 | [页面：管理](11_page_manage.md) | 部门管理、用户管理、Skill 管理 |
 | 12 | [页面：工具与项目](12_page_tool_project.md) | 工具管理、项目管理、路径冲突规则 |
 | 13 | [页面：通知与设置](13_page_notify_settings.md) | 通知类型、设置、MCP/插件预留 |
@@ -59,4 +61,4 @@
 | 文档 | 说明 |
 |------|------|
 | [skills_manage.md](skills_manage.md) | 多 AI 工具统一 Skills 管理器设计草案（Central Store 架构） |
-| [../Progress/README.md](../Progress/README.md) | 项目进度归档，汇总 P1 已落地纵向链路、剩余工程收尾项和实机验证缺口 |
+| [../Progress/README.md](../Progress/README.md) | 历史进度归档入口；当前版本判断以规范源文档和 `docs/Verification/` 证据为准 |

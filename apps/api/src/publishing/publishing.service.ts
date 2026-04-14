@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,7 +20,11 @@ import { Client as MinioClient } from 'minio';
 import { Redis } from 'ioredis';
 import { PoolClient } from 'pg';
 import {
+  PackageFileContentDto,
+  PackageFileEntryDto,
+  PackagePreviewFileType,
   PublishScopeType,
+  PublisherStatusAction,
   PublisherSkillSummaryDto,
   PublisherSubmissionDetailDto,
   ReviewAction,
@@ -39,6 +43,7 @@ import {
 } from '../common/p1-contracts';
 import { DatabaseService } from '../database/database.service';
 import { SkillsService } from '../skills/skills.service';
+import { assertSkillStatusTransition } from '../admin/skill-status';
 import {
   buildPrecheckItems,
   collectDirectoryFileCount,
@@ -87,6 +92,8 @@ interface SkillRecord {
   version: string | null;
   current_version_id: string | null;
   current_package_id: string | null;
+  current_package_bucket: string | null;
+  current_package_object_key: string | null;
   current_package_hash: string | null;
   current_package_size_bytes: number | null;
   current_package_file_count: number | null;
@@ -137,6 +144,8 @@ interface ReviewRecord {
   current_scope_type: PublishScopeType | null;
   current_scope_department_ids: string[] | null;
   current_package_id: string | null;
+  current_package_bucket: string | null;
+  current_package_object_key: string | null;
   current_package_hash: string | null;
   current_package_size_bytes: number | null;
   current_package_file_count: number | null;
@@ -177,6 +186,12 @@ interface StagedPackageRecord {
   sha256: string;
   sizeBytes: number;
   fileCount: number;
+}
+
+interface ExtractedPackageFile {
+  relativePath: string;
+  absolutePath: string;
+  sizeBytes: number;
 }
 
 type UploadedSubmissionFile = { originalname: string; buffer: Buffer; size: number };
@@ -315,6 +330,8 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
         current_scope.scope_type AS current_scope_type,
         current_scope.department_ids AS current_scope_department_ids,
         current_package.id AS current_package_id,
+        current_package.bucket AS current_package_bucket,
+        current_package.object_key AS current_package_object_key,
         current_package.sha256 AS current_package_hash,
         current_package.size_bytes AS current_package_size_bytes,
         current_package.file_count AS current_package_file_count,
@@ -349,7 +366,7 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
         LIMIT 1
       ) current_scope ON true
       LEFT JOIN LATERAL (
-        SELECT p.id, p.sha256, p.size_bytes, p.file_count
+        SELECT p.id, p.bucket, p.object_key, p.sha256, p.size_bytes, p.file_count
         FROM skills skill_pkg
         JOIN skill_versions version_pkg ON version_pkg.id = skill_pkg.current_version_id
         JOIN skill_packages p ON p.skill_version_id = version_pkg.id
@@ -387,6 +404,7 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
         submittedAt: latest?.submitted_at?.toISOString() ?? null,
         updatedAt: (latest?.updated_at ?? new Date()).toISOString(),
         canWithdraw: latest ? this.canSubmitterWithdraw(actor.userID, latest) : false,
+        availableStatusActions: publisherStatusActions(row.status),
       });
     }
 
@@ -414,6 +432,7 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
         submittedAt: row.submitted_at.toISOString(),
         updatedAt: row.updated_at.toISOString(),
         canWithdraw: this.canSubmitterWithdraw(actor.userID, row),
+        availableStatusActions: [],
       });
     }
 
@@ -590,6 +609,57 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
     return this.getPublisherSubmission(actor.userID, submissionID);
   }
 
+  async setPublisherSkillStatus(
+    userID: string,
+    skillID: string,
+    nextStatus: PublisherStatusAction,
+  ): Promise<PublisherSkillSummaryDto[]> {
+    const actor = await this.loadActor(userID);
+    const skill = await this.loadSkillByID(skillID);
+    if (!skill || skill.author_id !== actor.userID) {
+      throw new ForbiddenException('permission_denied');
+    }
+
+    const statusMap: Record<PublisherStatusAction, SkillStatus> = {
+      delist: 'delisted',
+      relist: 'published',
+      archive: 'archived',
+    };
+    const targetStatus = statusMap[nextStatus];
+    assertSkillStatusTransition(skill.status, targetStatus);
+
+    await this.database.query(
+      'UPDATE skills SET status = $2, updated_at = now() WHERE skill_id = $1',
+      [skillID, targetStatus],
+    );
+    return this.listPublisherSkills(actor.userID);
+  }
+
+  async listPublisherSubmissionFiles(
+    userID: string,
+    submissionID: string,
+  ): Promise<PackageFileEntryDto[]> {
+    const actor = await this.loadActor(userID);
+    const review = await this.loadReview(submissionID);
+    if (review.submitter_id !== actor.userID) {
+      throw new ForbiddenException('permission_denied');
+    }
+    return this.listPackageFilesForReview(review);
+  }
+
+  async getPublisherSubmissionFileContent(
+    userID: string,
+    submissionID: string,
+    relativePath: string,
+  ): Promise<PackageFileContentDto> {
+    const actor = await this.loadActor(userID);
+    const review = await this.loadReview(submissionID);
+    if (review.submitter_id !== actor.userID) {
+      throw new ForbiddenException('permission_denied');
+    }
+    return this.readPackageFileContentForReview(review, relativePath);
+  }
+
   async listReviews(userID: string): Promise<ReviewItemDto[]> {
     const actor = await this.loadActor(userID);
     if (actor.role !== 'admin' || actor.adminLevel === null) {
@@ -619,6 +689,36 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
     }
     const history = await this.loadHistory(reviewID);
     return this.toReviewDetail(review, history, actor, actor.userID);
+  }
+
+  async listReviewFiles(userID: string, reviewID: string): Promise<PackageFileEntryDto[]> {
+    const actor = await this.loadActor(userID);
+    if (actor.role !== 'admin' || actor.adminLevel === null) {
+      throw new ForbiddenException('permission_denied');
+    }
+
+    const review = await this.loadReview(reviewID);
+    if (!(await this.canActorSeeReview(actor, review))) {
+      throw new ForbiddenException('permission_denied');
+    }
+    return this.listPackageFilesForReview(review);
+  }
+
+  async getReviewFileContent(
+    userID: string,
+    reviewID: string,
+    relativePath: string,
+  ): Promise<PackageFileContentDto> {
+    const actor = await this.loadActor(userID);
+    if (actor.role !== 'admin' || actor.adminLevel === null) {
+      throw new ForbiddenException('permission_denied');
+    }
+
+    const review = await this.loadReview(reviewID);
+    if (!(await this.canActorSeeReview(actor, review))) {
+      throw new ForbiddenException('permission_denied');
+    }
+    return this.readPackageFileContentForReview(review, relativePath);
   }
 
   async claimReview(userID: string, reviewID: string): Promise<ReviewDetailDto> {
@@ -1595,6 +1695,7 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
     actor: ActorContext,
     requesterUserID: string,
   ): Promise<ReviewDetailDto> {
+    const packageFiles = await this.listPackageFilesForReview(review);
     const packageRef = review.staged_package_object_key
       ? review.review_id
       : review.current_package_id ?? undefined;
@@ -1615,6 +1716,7 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
       packageHash: review.staged_package_sha256 ?? review.current_package_hash ?? undefined,
       packageSize: review.staged_package_size_bytes ?? review.current_package_size_bytes ?? undefined,
       packageFileCount: review.staged_package_file_count ?? review.current_package_file_count ?? undefined,
+      packageFiles,
       history,
     };
   }
@@ -1625,6 +1727,7 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
     userID: string,
     requesterUserID: string,
   ): Promise<PublisherSubmissionDetailDto> {
+    const packageFiles = await this.listPackageFilesForReview(review);
     const payload = review.submission_payload;
     const packageRef = review.staged_package_object_key
       ? review.review_id
@@ -1656,11 +1759,93 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
       packageHash: review.staged_package_sha256 ?? review.current_package_hash ?? undefined,
       packageSize: review.staged_package_size_bytes ?? review.current_package_size_bytes ?? undefined,
       packageFileCount: review.staged_package_file_count ?? review.current_package_file_count ?? undefined,
+      packageFiles,
       submittedAt: review.submitted_at.toISOString(),
       updatedAt: review.updated_at.toISOString(),
       canWithdraw: this.canSubmitterWithdraw(userID, review),
       history,
     };
+  }
+
+  private async listPackageFilesForReview(review: ReviewRecord): Promise<PackageFileEntryDto[]> {
+    let files: ExtractedPackageFile[] = [];
+    try {
+      files = await this.withExtractedReviewPackage(review, async (packageRoot) => {
+        return collectExtractedPackageFiles(packageRoot);
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        return [];
+      }
+      throw error;
+    }
+    return files.map((file) => ({
+      relativePath: file.relativePath,
+      fileType: packagePreviewFileType(file.relativePath),
+      sizeBytes: file.sizeBytes,
+      previewable: isPreviewablePackageFile(file.relativePath),
+    }));
+  }
+
+  private async readPackageFileContentForReview(
+    review: ReviewRecord,
+    relativePath: string,
+  ): Promise<PackageFileContentDto> {
+    const normalizedPath = normalizeRelativeUploadPath(relativePath);
+    return this.withExtractedReviewPackage(review, async (packageRoot) => {
+      const files = await collectExtractedPackageFiles(packageRoot);
+      const file = files.find((item) => item.relativePath === normalizedPath);
+      if (!file) {
+        throw new NotFoundException('resource_not_found');
+      }
+      const fileType = packagePreviewFileType(file.relativePath);
+      if (!isPreviewablePackageFile(file.relativePath)) {
+        throw new BadRequestException('validation_failed');
+      }
+
+      const buffer = await readFile(file.absolutePath);
+      const truncated = buffer.length > 256 * 1024;
+      const contentBuffer = truncated ? buffer.subarray(0, 256 * 1024) : buffer;
+      return {
+        relativePath: file.relativePath,
+        fileType,
+        content: contentBuffer.toString('utf8'),
+        truncated,
+      };
+    });
+  }
+
+  private async withExtractedReviewPackage<T>(
+    review: ReviewRecord,
+    callback: (packageRoot: string) => Promise<T>,
+  ): Promise<T> {
+    const buffer = await this.readReviewPackageBuffer(review);
+    const tempDir = await mkdtemp(join(tmpdir(), 'eah-package-preview-'));
+    const zipPath = join(tempDir, 'package.zip');
+    const extractDir = join(tempDir, 'extract');
+    await mkdir(extractDir, { recursive: true });
+
+    try {
+      await writeFile(zipPath, buffer);
+      await this.unzipFile(zipPath, extractDir);
+      const packageRoot = await this.resolvePackageRoot(extractDir);
+      return await callback(packageRoot);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  private async readReviewPackageBuffer(review: ReviewRecord): Promise<Buffer> {
+    if (review.staged_package_object_key) {
+      return this.readStageObject(review);
+    }
+    if (review.current_package_object_key) {
+      return this.readPackageObject(
+        review.current_package_bucket ?? this.packageBucket(),
+        review.current_package_object_key,
+      );
+    }
+    throw new BadRequestException('validation_failed');
   }
 
   private minioClient(): MinioClient {
@@ -1689,15 +1874,22 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
     if (!review.staged_package_object_key) {
       throw new BadRequestException('validation_failed');
     }
+    return this.readPackageObject(
+      review.staged_package_bucket ?? this.packageBucket(),
+      review.staged_package_object_key,
+    );
+  }
+
+  private async readPackageObject(bucket: string, objectKey: string): Promise<Buffer> {
     if (this.hasMinioConfigured()) {
-      const stream = await this.minioClient().getObject(review.staged_package_bucket ?? this.packageBucket(), review.staged_package_object_key);
+      const stream = await this.minioClient().getObject(bucket, objectKey);
       const chunks: Buffer[] = [];
       for await (const chunk of stream) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
       return Buffer.concat(chunks);
     }
-    return readFile(join(this.localPackageStorageRoot(), review.staged_package_object_key));
+    return readFile(join(this.localPackageStorageRoot(), objectKey));
   }
 
   private async copyObject(
@@ -1854,6 +2046,17 @@ function buildAvailableActions(review: ReviewRecord, actorUserID: string): Revie
   return actions;
 }
 
+function publisherStatusActions(status: SkillStatus | null | undefined): PublisherStatusAction[] {
+  switch (status) {
+    case 'published':
+      return ['delist', 'archive'];
+    case 'delisted':
+      return ['relist', 'archive'];
+    default:
+      return [];
+  }
+}
+
 function isLockActive(lockExpiresAt: Date | null): boolean {
   return !!lockExpiresAt && lockExpiresAt.getTime() > Date.now();
 }
@@ -1873,6 +2076,46 @@ function stripCommonPrefix(value: string, prefix: string): string {
   }
   const normalized = value.replace(/\\/g, '/');
   return normalized.startsWith(`${prefix}/`) ? normalized.slice(prefix.length + 1) : normalized;
+}
+
+async function collectExtractedPackageFiles(rootDir: string, baseDir = rootDir): Promise<ExtractedPackageFile[]> {
+  const entries = await readdir(rootDir, { withFileTypes: true });
+  const files: ExtractedPackageFile[] = [];
+  for (const entry of entries) {
+    const absolutePath = join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectExtractedPackageFiles(absolutePath, baseDir)));
+      continue;
+    }
+    if (!entry.isFile()) {
+      continue;
+    }
+    const relativePath = normalizeRelativeUploadPath(
+      absolutePath.slice(baseDir.length + 1).replace(/\\/g, '/'),
+    );
+    const fileStat = await stat(absolutePath);
+    files.push({
+      relativePath,
+      absolutePath,
+      sizeBytes: fileStat.size,
+    });
+  }
+  return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
+
+function packagePreviewFileType(relativePath: string): PackagePreviewFileType {
+  const lower = relativePath.toLowerCase();
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return 'markdown';
+  }
+  if (lower.endsWith('.txt')) {
+    return 'text';
+  }
+  return 'other';
+}
+
+function isPreviewablePackageFile(relativePath: string): boolean {
+  return packagePreviewFileType(relativePath) !== 'other';
 }
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {

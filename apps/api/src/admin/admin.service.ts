@@ -12,6 +12,7 @@ import {
   SkillStatus,
   VisibilityLevel,
 } from '../common/p1-contracts';
+import { assertSkillStatusTransition } from './skill-status';
 import { DatabaseService } from '../database/database.service';
 import { AuthService } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
@@ -378,9 +379,7 @@ export class AdminService {
       }
     }
 
-    if (nextStatus === 'published' && target.status !== 'delisted') {
-      throw new BadRequestException('validation_failed');
-    }
+    assertSkillStatusTransition(target.status, nextStatus);
 
     await this.database.query('UPDATE skills SET status = $2, updated_at = now() WHERE skill_id = $1', [skillID, nextStatus]);
     return this.listSkills(userID);

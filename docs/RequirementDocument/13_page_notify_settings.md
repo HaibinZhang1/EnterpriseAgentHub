@@ -21,6 +21,8 @@
 - skill 被退回修改
 - skill 已发布
 - skill 已下架
+- skill 已重新上架
+- skill 已归档
 - 你有新的待审核任务
 
 ## 通知字段
