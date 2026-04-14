@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BootstrapContextDto, LocalEventDto, NotificationType, UserSummary } from '../common/p1-contracts';
+import { logInfo, logWarn } from '../common/structured-log';
 import { DatabaseService } from '../database/database.service';
 import { PermissionResolverService } from '../auth/permission-resolver.service';
 
@@ -61,6 +62,14 @@ export class DesktopService {
     const acceptedEventIDs: string[] = [];
 
     if (!request.deviceID) {
+      logWarn({
+        event: 'desktop.local_events.rejected',
+        domain: 'desktop-local-runtime',
+        action: 'accept_local_events',
+        actorID: userID,
+        result: 'failed',
+        reason: 'missing_device_id'
+      });
       rejectedEvents.push({ code: 'device_required', message: 'deviceID is required' });
       return { acceptedEventIDs, rejectedEvents, serverStateChanged: false, remoteNotices: [] };
     }
@@ -107,6 +116,19 @@ export class DesktopService {
       );
       acceptedEventIDs.push(event.eventID);
     }
+
+    logInfo({
+      event: 'desktop.local_events.accepted',
+      domain: 'desktop-local-runtime',
+      action: 'accept_local_events',
+      actorID: userID,
+      entityID: request.deviceID,
+      result: 'ok',
+      detail: {
+        acceptedEventCount: acceptedEventIDs.length,
+        rejectedEventCount: rejectedEvents.length
+      }
+    });
 
     return {
       acceptedEventIDs,

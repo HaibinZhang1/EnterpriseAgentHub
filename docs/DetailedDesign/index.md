@@ -36,6 +36,11 @@
 | 03 | [服务端 Docker 一键部署详细设计](03_server_docker_deployment.md) | Compose 一键部署、低版本服务器兼容、离线镜像包、数据持久化、健康检查和验收边界。 |
 | 04 | [共享契约落地对齐](04_p1_shared_contracts_alignment.md) | 共享 TypeScript 契约包、workspace 脚本、symlink-first/copy-fallback 字段和 DTO 对接规则。 |
 
+## P2 平台化资产
+
+- [Architecture Assets](../Architecture/index.md)：领域边界、分层规则、shared-contracts 演进规则与扩展接入面。
+- [Config and Security Operations](../Operations/config-and-security.md)：环境模板、配置校验、部署前检查与安全反模式。
+
 ## 暂不展开
 
 - 复杂审计报表、企业 IM、系统托盘、多端安装包。

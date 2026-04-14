@@ -1,56 +1,79 @@
-export type SkillStatus = "published" | "delisted" | "archived";
-export type VisibilityLevel = "private" | "summary_visible" | "detail_visible" | "public_installable";
-export type DetailAccess = "none" | "summary" | "full";
-export type RiskLevel = "low" | "medium" | "high" | "unknown";
-export type InstallState = "not_installed" | "installed" | "enabled" | "update_available" | "blocked";
-export type ConnectionStatus = "connected" | "connecting" | "offline" | "failed";
-export type TargetType = "tool" | "project";
-export type AdapterStatus = "detected" | "manual" | "missing" | "invalid" | "disabled";
-export type RequestedMode = "symlink" | "copy";
-export type ResolvedMode = "symlink" | "copy";
-export type DetectionMethod = "registry" | "default_path" | "manual";
-export type ScanFindingKind = "managed" | "unmanaged" | "conflict" | "orphan";
-export type MenuPermission =
-  | "home"
-  | "market"
-  | "my_installed"
-  | "review"
-  | "manage"
-  | "tools"
-  | "projects"
-  | "notifications"
-  | "settings";
+import type {
+  AdminSkill as SharedAdminSkill,
+  AdminUser as SharedAdminUser,
+  AdapterStatus as SharedAdapterStatus,
+  ApiErrorCode,
+  ConnectionStatus as SharedConnectionStatus,
+  CurrentUser as SharedCurrentUser,
+  DepartmentNode as SharedDepartmentNode,
+  DesktopBootstrapResponse,
+  DetailAccess as SharedDetailAccess,
+  DetectionMethod as SharedDetectionMethod,
+  DownloadTicketResponse as SharedDownloadTicket,
+  EnabledTarget as SharedEnabledTarget,
+  InstallState as SharedInstallState,
+  LocalBootstrapResponse as SharedLocalBootstrapResponse,
+  LocalEvent as SharedLocalEvent,
+  LocalSkillInstall as SharedLocalSkillInstall,
+  NavigationItem as SharedMenuPermission,
+  PackageFileContent as SharedPackageFileContent,
+  PackageFileEntry as SharedPackageFileEntry,
+  PackagePreviewFileType as SharedPackagePreviewFileType,
+  PublishScopeType as SharedPublishScopeType,
+  PublisherSkillSummary as SharedPublisherSkillSummary,
+  PublisherStatusAction as SharedPublisherStatusAction,
+  PublisherSubmissionDetail as SharedPublisherSubmissionDetail,
+  RequestedMode as SharedRequestedMode,
+  ResolvedMode as SharedResolvedMode,
+  ReviewAction as SharedReviewAction,
+  ReviewDecision as SharedReviewDecision,
+  ReviewDetail as SharedReviewDetail,
+  ReviewHistory as SharedReviewHistory,
+  ReviewItem as SharedReviewItem,
+  ReviewPrecheckItem as SharedReviewPrecheckItem,
+  ReviewStatus as SharedReviewStatus,
+  ReviewType as SharedReviewType,
+  RiskLevel as SharedRiskLevel,
+  ScanFindingKind as SharedScanFindingKind,
+  SkillStatus as SharedSkillStatus,
+  SkillSummary as SharedSkillSummary,
+  SubmissionType as SharedSubmissionType,
+  TargetType as SharedTargetType,
+  VisibilityLevel as SharedVisibilityLevel,
+  WorkflowState as SharedWorkflowState
+} from "@enterprise-agent-hub/shared-contracts";
+
+type MutableDeep<T> = T extends readonly (infer TItem)[]
+  ? MutableDeep<TItem>[]
+  : T extends object
+    ? { -readonly [K in keyof T]: MutableDeep<T[K]> }
+    : T;
+
+export type SkillStatus = SharedSkillStatus;
+export type VisibilityLevel = SharedVisibilityLevel;
+export type DetailAccess = SharedDetailAccess;
+export type RiskLevel = SharedRiskLevel;
+export type InstallState = SharedInstallState;
+export type ConnectionStatus = SharedConnectionStatus;
+export type TargetType = SharedTargetType;
+export type AdapterStatus = SharedAdapterStatus;
+export type RequestedMode = SharedRequestedMode;
+export type ResolvedMode = SharedResolvedMode;
+export type DetectionMethod = SharedDetectionMethod;
+export type ScanFindingKind = SharedScanFindingKind;
+export type MenuPermission = SharedMenuPermission;
 export type NavigationPageID = MenuPermission;
 export type PageID = NavigationPageID | "detail";
-export type NotificationType =
-  | "skill_update_available"
-  | "skill_scope_restricted"
-  | "local_copy_blocked"
-  | "connection_restored"
-  | "connection_failed"
-  | "target_path_invalid"
-  | "install_result"
-  | "update_result"
-  | "uninstall_result"
-  | "enable_result"
-  | "disable_result";
-export type ReviewStatus = "pending" | "in_review" | "reviewed";
-export type ReviewType = "publish" | "update" | "permission_change";
-export type WorkflowState =
-  | "system_prechecking"
-  | "manual_precheck"
-  | "pending_review"
-  | "in_review"
-  | "returned_for_changes"
-  | "review_rejected"
-  | "withdrawn"
-  | "published";
-export type PublishScopeType = "current_department" | "department_tree" | "selected_departments" | "all_employees";
-export type SubmissionType = ReviewType;
-export type ReviewDecision = "approve" | "return_for_changes" | "reject" | "withdraw";
-export type ReviewAction = "claim" | "pass_precheck" | "approve" | "return_for_changes" | "reject" | "withdraw";
-export type PublisherStatusAction = "delist" | "relist" | "archive";
-export type PackagePreviewFileType = "markdown" | "text" | "other";
+export type NotificationType = SharedLocalEvent["eventType"];
+export type ReviewStatus = SharedReviewStatus;
+export type ReviewType = SharedReviewType;
+export type WorkflowState = SharedWorkflowState;
+export type PublishScopeType = SharedPublishScopeType;
+export type SubmissionType = SharedSubmissionType;
+export type ReviewDecision = SharedReviewDecision;
+export type ReviewAction = SharedReviewAction;
+export type PublisherStatusAction = SharedPublisherStatusAction;
+export type PackagePreviewFileType = SharedPackagePreviewFileType;
 export type AuthState = "guest" | "authenticated";
 export type SettingsLanguage = "auto" | "zh-CN" | "en-US";
 export type SettingsTheme = "classic" | "fresh" | "contrast";
@@ -58,120 +81,41 @@ export type NotificationListFilter = "all" | "unread";
 export type ReviewBoardTab = "pending" | "in_review" | "reviewed";
 export type PendingActionCode = "pending_backend" | "pending_local_command";
 
-export interface P1User {
-  userID: string;
-  displayName: string;
-  role: string;
-  adminLevel?: number;
-  departmentID: string;
-  departmentName: string;
-  locale: string;
-}
+export type P1User = MutableDeep<SharedCurrentUser>;
+export type BootstrapContext = MutableDeep<DesktopBootstrapResponse>;
 
-export interface BootstrapContext {
-  user: P1User;
-  connection: {
-    status: ConnectionStatus;
-    serverTime: string;
-    apiVersion: string;
-    lastError?: string;
-  };
-  features: {
-    p1Desktop: boolean;
-    publishSkill: boolean;
-    reviewWorkbench: boolean;
-    adminManage: boolean;
-    mcpManage: boolean;
-    pluginManage: boolean;
-  };
-  counts: {
-    installedCount: number;
-    enabledCount: number;
-    updateAvailableCount: number;
-    unreadNotificationCount: number;
-  };
-  navigation: MenuPermission[];
-  menuPermissions: MenuPermission[];
-}
-
-export interface EnabledTarget {
+export interface EnabledTarget extends Omit<SharedEnabledTarget, "fallbackReason" | "status" | "lastError" | "installMode"> {
   id?: string;
   skillID?: string;
-  targetType: TargetType;
-  targetID: string;
-  targetName: string;
-  targetPath: string;
   installMode?: RequestedMode;
-  requestedMode: RequestedMode;
-  resolvedMode: ResolvedMode;
   fallbackReason: string | null;
-  enabledAt: string;
   status?: "enabled" | "disabled" | "failed";
   lastError?: string | null;
 }
 
-export interface DownloadTicket {
-  skillID: string;
-  version: string;
-  packageRef: string;
-  packageURL: string;
-  packageHash: `sha256:${string}`;
-  packageSize: number;
-  packageFileCount: number;
-  expiresAt: string;
-}
+export type DownloadTicket = SharedDownloadTicket;
 
-export interface LocalSkillInstall {
-  skillID: string;
-  displayName: string;
-  localVersion: string;
-  localHash: string;
+export interface LocalSkillInstall extends Omit<SharedLocalSkillInstall, "enabledTargets" | "sourcePackageHash"> {
   sourcePackageHash: string;
-  installedAt: string;
-  updatedAt: string;
-  localStatus: "installed" | "enabled" | "partially_failed";
-  centralStorePath: string;
   enabledTargets: EnabledTarget[];
-  hasUpdate: boolean;
-  isScopeRestricted: boolean;
-  canUpdate: boolean;
 }
 
-export interface LocalBootstrap {
+export interface LocalBootstrap extends Omit<SharedLocalBootstrapResponse, "installs" | "tools" | "projects"> {
   installs: LocalSkillInstall[];
   tools: ToolConfig[];
   projects: ProjectConfig[];
   notifications: LocalNotification[];
   offlineEvents: LocalEvent[];
-  pendingOfflineEventCount: number;
-  unreadLocalNotificationCount: number;
-  centralStorePath: string;
 }
 
-export interface SkillSummary {
-  skillID: string;
-  displayName: string;
-  description: string;
-  version: string;
+export interface SkillSummary extends Omit<SharedSkillSummary, "cannotInstallReason"> {
   localVersion: string | null;
-  status: SkillStatus;
-  visibilityLevel: VisibilityLevel;
-  detailAccess: DetailAccess;
-  canInstall: boolean;
   canUpdate: boolean;
-  cannotInstallReason?: string;
-  installState: InstallState;
-  authorName?: string;
-  authorDepartment?: string;
-  currentVersionUpdatedAt: string;
+  cannotInstallReason?: ApiErrorCode | string;
   publishedAt: string;
-  compatibleTools: string[];
-  compatibleSystems: string[];
   tags: string[];
   category: string;
   riskLevel: RiskLevel;
-  starCount: number;
-  downloadCount: number;
   starred: boolean;
   readme?: string;
   reviewSummary?: string;
@@ -322,7 +266,7 @@ export interface PublishPrecheckResult {
 
 export interface ReviewDecisionDraft {
   reviewID: string;
-  decision: "approve" | "return_for_changes" | "reject";
+  decision: Extract<ReviewDecision, "approve" | "return_for_changes" | "reject">;
   comment: string;
 }
 
@@ -399,18 +343,9 @@ export type DesktopModalState =
       type: "settings";
     };
 
-export interface LocalEvent {
-  eventID: string;
+export interface LocalEvent extends Omit<SharedLocalEvent, "fallbackReason" | "result"> {
   eventType: Extract<NotificationType, "enable_result" | "disable_result" | "uninstall_result" | "target_path_invalid" | "local_copy_blocked">;
-  skillID: string;
-  version: string;
-  targetType: TargetType;
-  targetID: string;
-  targetPath: string;
-  requestedMode: RequestedMode;
-  resolvedMode: ResolvedMode;
   fallbackReason: string | null;
-  occurredAt: string;
   result: "success" | "failed";
 }
 
@@ -436,167 +371,17 @@ export interface MarketFilters {
   sort: "composite" | "latest_published" | "recently_updated" | "download_count" | "star_count" | "relevance";
 }
 
-export interface DepartmentNode {
-  departmentID: string;
-  parentDepartmentID: string | null;
-  name: string;
-  path: string;
-  level: number;
-  status: string;
-  userCount: number;
-  skillCount: number;
-  children: DepartmentNode[];
-}
-
-export interface AdminUser {
-  userID: string;
-  username: string;
-  displayName: string;
-  departmentID: string;
-  departmentName: string;
-  role: "normal_user" | "admin";
-  adminLevel: number | null;
-  status: "active" | "frozen" | "deleted";
-  publishedSkillCount: number;
-  starCount: number;
-}
-
-export interface AdminSkill {
-  skillID: string;
-  displayName: string;
-  publisherName: string;
-  departmentID: string;
-  departmentName: string;
-  version: string;
-  status: SkillStatus;
-  visibilityLevel: VisibilityLevel;
-  starCount: number;
-  downloadCount: number;
-  updatedAt: string;
-}
-
-export interface ReviewItem {
-  reviewID: string;
-  skillID: string;
-  skillDisplayName: string;
-  submitterName: string;
-  submitterDepartmentName: string;
-  reviewType: ReviewType;
-  reviewStatus: ReviewStatus;
-  workflowState: WorkflowState;
-  riskLevel: RiskLevel;
-  summary: string;
-  lockState: "unlocked" | "locked";
-  lockOwnerID?: string;
-  currentReviewerName?: string;
-  requestedVersion?: string;
-  requestedVisibilityLevel?: VisibilityLevel;
-  requestedScopeType?: PublishScopeType;
-  decision?: ReviewDecision;
-  availableActions: ReviewAction[];
-  submittedAt: string;
-  updatedAt: string;
-}
-
-export interface ReviewHistory {
-  historyID: string;
-  action: string;
-  actorName: string;
-  comment: string | null;
-  createdAt: string;
-}
-
-export interface PackageFileEntry {
-  relativePath: string;
-  fileType: PackagePreviewFileType;
-  sizeBytes: number;
-  previewable: boolean;
-}
-
-export interface PackageFileContent {
-  relativePath: string;
-  fileType: PackagePreviewFileType;
-  content: string;
-  truncated: boolean;
-}
-
-export interface ReviewPrecheckItem {
-  id: string;
-  label: string;
-  status: "pass" | "warn";
-  message: string;
-}
-
-export interface ReviewDetail extends ReviewItem {
-  description: string;
-  reviewSummary?: string;
-  currentVersion?: string;
-  currentVisibilityLevel?: VisibilityLevel;
-  currentScopeType?: PublishScopeType;
-  requestedDepartmentIDs: string[];
-  precheckResults: ReviewPrecheckItem[];
-  packageRef?: string;
-  packageURL?: string;
-  packageHash?: string;
-  packageSize?: number;
-  packageFileCount?: number;
-  packageFiles: PackageFileEntry[];
-  history: ReviewHistory[];
-}
-
-export interface PublisherSkillSummary {
-  skillID: string;
-  displayName: string;
-  publishedSkillExists: boolean;
-  currentVersion?: string | null;
-  currentStatus?: SkillStatus | null;
-  currentVisibilityLevel?: VisibilityLevel | null;
-  currentScopeType?: PublishScopeType | null;
-  latestSubmissionID?: string | null;
-  latestSubmissionType?: SubmissionType | null;
-  latestWorkflowState?: WorkflowState | null;
-  latestReviewStatus?: ReviewStatus | null;
-  latestDecision?: ReviewDecision | null;
-  latestRequestedVersion?: string | null;
-  latestRequestedVisibilityLevel?: VisibilityLevel | null;
-  latestRequestedScopeType?: PublishScopeType | null;
-  latestReviewSummary?: string | null;
-  submittedAt?: string | null;
-  updatedAt: string;
-  canWithdraw: boolean;
-  availableStatusActions: PublisherStatusAction[];
-}
-
-export interface PublisherSubmissionDetail {
-  submissionID: string;
-  submissionType: SubmissionType;
-  workflowState: WorkflowState;
-  reviewStatus: ReviewStatus;
-  decision?: ReviewDecision;
-  skillID: string;
-  displayName: string;
-  description: string;
-  changelog: string;
-  version: string;
-  currentVersion?: string | null;
-  visibilityLevel: VisibilityLevel;
-  currentVisibilityLevel?: VisibilityLevel | null;
-  scopeType: PublishScopeType;
-  currentScopeType?: PublishScopeType | null;
-  selectedDepartmentIDs: string[];
-  reviewSummary?: string;
-  precheckResults: ReviewPrecheckItem[];
-  packageRef?: string;
-  packageURL?: string;
-  packageHash?: string;
-  packageSize?: number;
-  packageFileCount?: number;
-  packageFiles: PackageFileEntry[];
-  submittedAt: string;
-  updatedAt: string;
-  canWithdraw: boolean;
-  history: ReviewHistory[];
-}
+export type DepartmentNode = MutableDeep<SharedDepartmentNode>;
+export type AdminUser = MutableDeep<SharedAdminUser>;
+export type AdminSkill = MutableDeep<SharedAdminSkill>;
+export type ReviewItem = MutableDeep<SharedReviewItem>;
+export type ReviewHistory = MutableDeep<SharedReviewHistory>;
+export type PackageFileEntry = MutableDeep<SharedPackageFileEntry>;
+export type PackageFileContent = MutableDeep<SharedPackageFileContent>;
+export type ReviewPrecheckItem = MutableDeep<SharedReviewPrecheckItem>;
+export type ReviewDetail = MutableDeep<SharedReviewDetail>;
+export type PublisherSkillSummary = MutableDeep<SharedPublisherSkillSummary>;
+export type PublisherSubmissionDetail = MutableDeep<SharedPublisherSubmissionDetail>;
 
 class PendingActionError extends Error {
   readonly code: PendingActionCode;

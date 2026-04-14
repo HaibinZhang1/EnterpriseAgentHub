@@ -4,6 +4,8 @@ import { PendingBackendError, type ProjectConfig, type PublishDraft, type ScanTa
 import { buildSkillListQuery } from "../src/services/p1Client.ts";
 import { prototypeActionClient } from "../src/services/prototypeActionClient.ts";
 import { buildPublishPrecheck, collectInstalledSkillIssues } from "../src/state/useDesktopUIState.ts";
+import { deriveMarketSkills } from "../src/state/workspace/workspaceDerivedState.ts";
+import { defaultFilters } from "../src/state/workspace/workspaceTypes.ts";
 import { deriveDiscoveredLocalSkills } from "../src/utils/discoveredLocalSkills.ts";
 import { formatDisplayDate, parseDisplayDate } from "../src/utils/displayDate.ts";
 import { defaultProjectSkillsPath, defaultToolConfigPath } from "../src/utils/platformPaths.ts";
@@ -215,6 +217,178 @@ test("market query builder keeps installed/enabled local-only while sending cate
   assert.equal(params.get("updatedSince"), "2026-04-06T00:00:00.000Z");
   assert.equal(params.get("installed"), null);
   assert.equal(params.get("enabled"), null);
+});
+
+test("workspace market derivation filters guest data locally by query, category, access, and install state", () => {
+  const skills: SkillSummary[] = [
+    {
+      skillID: "review-helper",
+      displayName: "Review Helper",
+      description: "审核辅助",
+      version: "1.0.0",
+      localVersion: "1.0.0",
+      status: "published",
+      visibilityLevel: "detail_visible",
+      detailAccess: "full",
+      canInstall: false,
+      canUpdate: false,
+      installState: "installed",
+      currentVersionUpdatedAt: "2026-04-09T08:00:00Z",
+      publishedAt: "2026-04-09T08:00:00Z",
+      compatibleTools: ["codex"],
+      compatibleSystems: ["macos"],
+      tags: ["review"],
+      category: "governance",
+      riskLevel: "low",
+      starCount: 2,
+      downloadCount: 4,
+      starred: false,
+      isScopeRestricted: false,
+      hasLocalHashDrift: false,
+      enabledTargets: [],
+      lastEnabledAt: null
+    },
+    {
+      skillID: "private-summary",
+      displayName: "Private Summary",
+      description: "权限摘要",
+      version: "1.0.0",
+      localVersion: null,
+      status: "published",
+      visibilityLevel: "summary_visible",
+      detailAccess: "summary",
+      canInstall: true,
+      canUpdate: false,
+      installState: "not_installed",
+      currentVersionUpdatedAt: "2026-04-09T08:00:00Z",
+      publishedAt: "2026-04-09T08:00:00Z",
+      compatibleTools: ["codex"],
+      compatibleSystems: ["macos"],
+      tags: ["private"],
+      category: "governance",
+      riskLevel: "low",
+      starCount: 10,
+      downloadCount: 10,
+      starred: false,
+      isScopeRestricted: false,
+      hasLocalHashDrift: false,
+      enabledTargets: [],
+      lastEnabledAt: null
+    }
+  ];
+
+  const result = deriveMarketSkills({
+    authState: "guest",
+    bootstrap: {
+      connection: { status: "offline", serverURL: null, lastError: null },
+      counts: { installedCount: 0, enabledCount: 0, updateAvailableCount: 0, unreadNotificationCount: 0 },
+      features: { publishSkill: false, reviewWorkbench: false, adminManage: false },
+      menuPermissions: [],
+      navigation: [],
+      user: null
+    },
+    filters: {
+      ...defaultFilters,
+      query: "review",
+      installed: "installed",
+      accessScope: "authorized_only",
+      category: "governance"
+    },
+    skills
+  });
+
+  assert.deepEqual(result.map((skill) => skill.skillID), ["review-helper"]);
+});
+
+test("workspace market derivation keeps connected authenticated remote order except local install/enabled filters", () => {
+  const skills: SkillSummary[] = [
+    {
+      skillID: "second-but-higher-score",
+      displayName: "Second",
+      description: "desc",
+      version: "1.0.0",
+      localVersion: null,
+      status: "published",
+      visibilityLevel: "detail_visible",
+      detailAccess: "full",
+      canInstall: true,
+      canUpdate: false,
+      installState: "not_installed",
+      currentVersionUpdatedAt: "2026-04-09T08:00:00Z",
+      publishedAt: "2026-04-09T08:00:00Z",
+      compatibleTools: ["codex"],
+      compatibleSystems: ["macos"],
+      tags: [],
+      category: "governance",
+      riskLevel: "low",
+      starCount: 100,
+      downloadCount: 100,
+      starred: false,
+      isScopeRestricted: false,
+      hasLocalHashDrift: false,
+      enabledTargets: [],
+      lastEnabledAt: null
+    },
+    {
+      skillID: "first-installed",
+      displayName: "First",
+      description: "desc",
+      version: "1.0.0",
+      localVersion: "1.0.0",
+      status: "published",
+      visibilityLevel: "detail_visible",
+      detailAccess: "full",
+      canInstall: false,
+      canUpdate: false,
+      installState: "enabled",
+      currentVersionUpdatedAt: "2026-04-09T08:00:00Z",
+      publishedAt: "2026-04-09T08:00:00Z",
+      compatibleTools: ["codex"],
+      compatibleSystems: ["macos"],
+      tags: [],
+      category: "governance",
+      riskLevel: "low",
+      starCount: 1,
+      downloadCount: 1,
+      starred: false,
+      isScopeRestricted: false,
+      hasLocalHashDrift: false,
+      enabledTargets: [
+        {
+          targetType: "tool",
+          targetID: "codex",
+          targetName: "Codex",
+          targetPath: "/Users/demo/.codex/skills",
+          requestedMode: "symlink",
+          resolvedMode: "symlink",
+          fallbackReason: null,
+          enabledAt: "2026-04-10T08:40:00Z"
+        }
+      ],
+      lastEnabledAt: "2026-04-10T08:40:00Z"
+    }
+  ];
+
+  const result = deriveMarketSkills({
+    authState: "authenticated",
+    bootstrap: {
+      connection: { status: "connected", serverURL: "http://localhost:3000", lastError: null },
+      counts: { installedCount: 0, enabledCount: 0, updateAvailableCount: 0, unreadNotificationCount: 0 },
+      features: { publishSkill: true, reviewWorkbench: true, adminManage: true },
+      menuPermissions: ["review", "manage"],
+      navigation: ["home", "market"],
+      user: null
+    },
+    filters: {
+      ...defaultFilters,
+      installed: "installed",
+      enabled: "enabled",
+      sort: "composite"
+    },
+    skills
+  });
+
+  assert.deepEqual(result.map((skill) => skill.skillID), ["first-installed"]);
 });
 
 test("display date parser accepts p1-local timestamps from desktop local state", () => {

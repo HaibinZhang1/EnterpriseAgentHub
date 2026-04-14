@@ -130,6 +130,7 @@ export const PublishScopeType = {
   AllEmployees: "all_employees"
 } as const;
 export type PublishScopeType = (typeof PublishScopeType)[keyof typeof PublishScopeType];
+export type SubmissionType = ReviewType;
 
 export const ReviewDecision = {
   Approve: "approve",
@@ -289,6 +290,7 @@ export interface FeatureFlags {
 
 export interface BootstrapCounts {
   readonly installedCount: number;
+  readonly enabledCount: number;
   readonly updateAvailableCount: number;
   readonly unreadNotificationCount: number;
 }
@@ -832,3 +834,38 @@ export const P1_API_ROUTES = {
 } as const;
 
 export type P1ApiRouteName = keyof typeof P1_API_ROUTES;
+
+export type ErrorCode = ApiErrorCode;
+export type MenuPermission = NavigationItem;
+export type PageQuery = PaginationQuery;
+export type PageResponse<TItem> = PaginatedResponse<TItem>;
+export type UserSummary = CurrentUser;
+export type BootstrapContextDto = DesktopBootstrapResponse;
+export type NotificationDto = Notification;
+export type LocalEventDto = LocalEvent;
+export type DepartmentNodeDto = DepartmentNode;
+export type AdminUserDto = AdminUser;
+export type AdminSkillDto = AdminSkill;
+export type ReviewItemDto = ReviewItem;
+export type ReviewHistoryDto = ReviewHistory;
+export type ReviewPrecheckItemDto = ReviewPrecheckItem;
+export type ReviewDetailDto = ReviewDetail;
+export type PackageFileEntryDto = PackageFileEntry;
+export type PackageFileContentDto = PackageFileContent;
+export type PublisherSkillSummaryDto = PublisherSkillSummary;
+export type PublisherSubmissionDetailDto = PublisherSubmissionDetail;
+
+export function pageOf<TItem>(
+  items: readonly TItem[],
+  page: number,
+  pageSize: number,
+  total = items.length
+): PageResponse<TItem> {
+  return {
+    items,
+    page,
+    pageSize,
+    total,
+    hasMore: page * pageSize < total
+  };
+}

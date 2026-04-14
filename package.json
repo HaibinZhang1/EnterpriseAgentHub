@@ -10,6 +10,9 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "check:boundaries": "node scripts/checks/check-import-boundaries.mjs",
+    "check:docs": "node scripts/checks/check-doc-structure.mjs",
+    "check:env": "node scripts/checks/check-env-safety.mjs",
     "clean": "npm run clean --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "p1:full-closure": "node scripts/full-closure/run.mjs",
