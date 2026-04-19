@@ -310,6 +310,7 @@ export const seedDepartments: DepartmentNode[] = [
     status: "active",
     userCount: 7,
     skillCount: 3,
+    adminCount: 2,
     children: [
       {
         departmentID: "dept_engineering",
@@ -320,6 +321,7 @@ export const seedDepartments: DepartmentNode[] = [
         status: "active",
         userCount: 4,
         skillCount: 1,
+        adminCount: 1,
         children: [
           {
             departmentID: "dept_frontend",
@@ -330,6 +332,7 @@ export const seedDepartments: DepartmentNode[] = [
             status: "active",
             userCount: 3,
             skillCount: 1,
+            adminCount: 0,
             children: []
           },
           {
@@ -341,6 +344,7 @@ export const seedDepartments: DepartmentNode[] = [
             status: "active",
             userCount: 1,
             skillCount: 0,
+            adminCount: 0,
             children: []
           }
         ]
@@ -354,6 +358,7 @@ export const seedDepartments: DepartmentNode[] = [
         status: "active",
         userCount: 1,
         skillCount: 1,
+        adminCount: 0,
         children: []
       },
       {
@@ -365,6 +370,7 @@ export const seedDepartments: DepartmentNode[] = [
         status: "active",
         userCount: 1,
         skillCount: 1,
+        adminCount: 0,
         children: []
       }
     ]
@@ -378,9 +384,11 @@ export const seedAdminUsers: AdminUser[] = [
     displayName: "系统管理员",
     departmentID: "dept_company",
     departmentName: "集团",
+    departmentPath: "/集团",
     role: "admin",
     adminLevel: 1,
     status: "active",
+    lastLoginAt: "2026-04-11T08:12:00Z",
     publishedSkillCount: 0,
     starCount: 4
   },
@@ -390,9 +398,11 @@ export const seedAdminUsers: AdminUser[] = [
     displayName: "技术部管理员",
     departmentID: "dept_engineering",
     departmentName: "技术部",
+    departmentPath: "/集团/技术部",
     role: "admin",
     adminLevel: 2,
     status: "active",
+    lastLoginAt: "2026-04-11T07:25:00Z",
     publishedSkillCount: 0,
     starCount: 1
   },
@@ -402,9 +412,11 @@ export const seedAdminUsers: AdminUser[] = [
     displayName: "张三",
     departmentID: "dept_frontend",
     departmentName: "前端组",
+    departmentPath: "/集团/技术部/前端组",
     role: "normal_user",
     adminLevel: null,
     status: "active",
+    lastLoginAt: "2026-04-10T16:30:00Z",
     publishedSkillCount: 0,
     starCount: 2
   }
@@ -414,10 +426,14 @@ export const seedAdminSkills: AdminSkill[] = [
   {
     skillID: "codex-review-helper",
     displayName: "Codex Review Helper",
+    description: "为真实管理工作台提供代码审查辅助与规则摘要能力。",
     publisherName: "李四",
     departmentID: "dept_frontend",
     departmentName: "前端组",
+    category: "开发效率",
     version: "1.2.0",
+    currentVersionRiskLevel: "low",
+    currentVersionReviewSummary: "已通过管理员审核，可用于前端工程质量治理。",
     status: "published",
     visibilityLevel: "public_installable",
     starCount: 12,
@@ -427,10 +443,14 @@ export const seedAdminSkills: AdminSkill[] = [
   {
     skillID: "design-guideline-lite",
     displayName: "Design Guideline Lite",
+    description: "轻量设计规范辅助 Skill，用于验证右侧简介和可见范围展示。",
     publisherName: "王五",
     departmentID: "dept_design",
     departmentName: "设计平台组",
+    category: "设计规范",
     version: "0.9.0",
+    currentVersionRiskLevel: "low",
+    currentVersionReviewSummary: "摘要公开，用于设计团队规范传播。",
     status: "published",
     visibilityLevel: "summary_visible",
     starCount: 4,

@@ -12,6 +12,7 @@ const publishingMigration = readFileSync(new URL('../src/database/migrations/002
 const packageDownloadService = readFileSync(new URL('../src/skills/package-download.service.ts', import.meta.url), 'utf8');
 const packageDownloadController = readFileSync(new URL('../src/skills/package-download.controller.ts', import.meta.url), 'utf8');
 const publishingService = readFileSync(new URL('../src/publishing/publishing-publication.service.ts', import.meta.url), 'utf8');
+const permissionResolver = readFileSync(new URL('../src/auth/permission-resolver.service.ts', import.meta.url), 'utf8');
 const seedPackage = new URL('../src/database/seeds/packages/codex-review-helper/1.2.0/package.zip', import.meta.url);
 const seedPackageHash = `sha256:${createHash('sha256').update(readFileSync(seedPackage)).digest('hex')}`;
 
@@ -28,10 +29,17 @@ test('P1 API contracts preserve symlink-first copy fallback fields', () => {
   assert.match(sharedContracts, /Symlink: "symlink"/);
   assert.match(sharedContracts, /Copy: "copy"/);
   assert.match(sharedContracts, /menuPermissions/);
+  assert.match(sharedContracts, /Notifications: "notifications"/);
   assert.match(sharedContracts, /adminLevel/);
   assert.match(contracts, /WorkflowState/);
   assert.match(contracts, /PublisherSkillSummaryDto/);
   assert.match(contracts, /ReviewPrecheckItemDto/);
+});
+
+test('authenticated menu permissions include notifications for bootstrap and API guards', () => {
+  assert.match(permissionResolver, /const basePermissions: MenuPermission\[] = \[[\s\S]*'notifications'/);
+  assert.match(permissionResolver, /const adminBasePermissions: MenuPermission\[] = \[[\s\S]*'notifications'/);
+  assert.match(permissionResolver, /return \[\.\.\.adminBasePermissions, \.\.\.adminPermissions\]/);
 });
 
 test('P1 seed covers full, restricted, and delisted skill scenarios', () => {

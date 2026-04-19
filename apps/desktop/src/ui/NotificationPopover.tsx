@@ -35,7 +35,11 @@ export function NotificationListRow({
   ui: DesktopUIState;
 }) {
   return (
-    <button className={notification.unread ? "notification-entry unread" : "notification-entry"} type="button" onClick={() => onSelect(notification)}>
+    <button
+      className={notification.unread ? "notification-entry unread" : "notification-entry"}
+      type="button"
+      onClick={() => onSelect(notification)}
+    >
       <span className="notification-entry-icon">{notificationKindIcon(notification.kind)}</span>
       <span className="notification-entry-main">
         <span className="notification-entry-top">
@@ -70,10 +74,18 @@ export function NotificationPopover({
       </div>
       <div className="notification-popover-toolbar">
         <div className="inline-actions">
-          <button className={ui.notificationFilter === "all" ? "btn btn-primary btn-small" : "btn btn-small"} type="button" onClick={() => ui.setNotificationFilter("all")}>
+          <button
+            className={ui.notificationFilter === "all" ? "btn btn-primary btn-small" : "btn btn-small"}
+            type="button"
+            onClick={() => ui.setNotificationFilter("all")}
+          >
             {localize(ui.language, "全部", "All")}
           </button>
-          <button className={ui.notificationFilter === "unread" ? "btn btn-primary btn-small" : "btn btn-small"} type="button" onClick={() => ui.setNotificationFilter("unread")}>
+          <button
+            className={ui.notificationFilter === "unread" ? "btn btn-primary btn-small" : "btn btn-small"}
+            type="button"
+            onClick={() => ui.setNotificationFilter("unread")}
+          >
             {localize(ui.language, "未读", "Unread")}
           </button>
         </div>
@@ -81,7 +93,6 @@ export function NotificationPopover({
           {localize(ui.language, "全部已读", "Mark All Read")}
         </button>
       </div>
-
       {ui.visibleNotifications.length === 0 ? (
         <div className="notification-empty">
           <strong>{localize(ui.language, "暂无通知", "No Notifications")}</strong>

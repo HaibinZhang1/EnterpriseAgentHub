@@ -3,8 +3,20 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
-const forbiddenLegacySurfaces = ["管理台", "MCP", "插件"];
 const forbiddenPrototypeMutationMarkers = ["ui-prototype/app.js", "ui-prototype/styles.css"];
+const forbiddenLegacyImports = [
+  "desktopPages.tsx",
+  "desktopModals.tsx",
+  "desktopNavigationGroups.ts",
+  "useDesktopNavigation.ts",
+  "MyInstalledPage",
+  "TargetManagementPage",
+  "PublisherWorkbenchPage",
+  "ReviewPage",
+  "AdminDepartmentsPage",
+  "AdminUsersPage",
+  "AdminSkillsPage"
+];
 
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -20,14 +32,14 @@ async function listFiles(dir) {
 const violations = [];
 for (const file of await listFiles(sourceRoot)) {
   const text = await readFile(file, "utf8");
-  for (const forbidden of forbiddenLegacySurfaces) {
-    if (text.includes(forbidden)) {
-      violations.push(`${file}: contains forbidden P2 surface label ${forbidden}`);
-    }
-  }
   for (const forbidden of forbiddenPrototypeMutationMarkers) {
     if (text.includes(forbidden)) {
       violations.push(`${file}: references prototype file path ${forbidden}`);
+    }
+  }
+  for (const forbidden of forbiddenLegacyImports) {
+    if (text.includes(forbidden)) {
+      violations.push(`${file}: references archived legacy desktop surface ${forbidden}`);
     }
   }
 }
@@ -37,4 +49,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log("Desktop UI lint passed: unsupported P3 surfaces are hidden and prototype files are not referenced.");
+console.log("Desktop UI lint passed: legacy page shells are archived and prototype files are not referenced directly.");

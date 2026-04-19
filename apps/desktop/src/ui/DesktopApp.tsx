@@ -1,123 +1,20 @@
-import type { ChangeEvent, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Bell, CheckCircle2, LogIn, LogOut, Search, WifiOff } from "lucide-react";
-import { useP1Workspace } from "../state/useP1Workspace";
-import { useDesktopUIState, type DesktopUIState } from "../state/useDesktopUIState";
-import { DesktopModals, FlashToast } from "./desktopModals";
-import { ActivePageContent } from "./desktopPages";
-import { NotificationPopover } from "./NotificationPopover";
-import { SkillDetailPanel } from "./pages/MarketPage";
-import { buildNavigationGroups } from "../state/ui/desktopNavigationGroups.ts";
-import type { DisplayLanguage } from "./desktopShared";
-import { localize, pageMetaFor, roleLabel, settingsMetaFor, shellBrand } from "./desktopShared";
+import { Bell, ChevronDown, LogIn, LogOut, Settings2, Shield, Wifi, WifiOff } from "lucide-react";
+import { useP1Workspace } from "../state/useP1Workspace.ts";
+import { type TopLevelSection, useDesktopUIState } from "../state/useDesktopUIState.ts";
+import { roleLabel } from "./desktopShared.tsx";
+import { NotificationPopover } from "./NotificationPopover.tsx";
+import { CommunitySection, HomeSection, LocalSection, ManageSection, SkillDetailStage } from "./desktopSections.tsx";
+import { DesktopOverlays, FlashToast } from "./desktopOverlays.tsx";
 
-function defaultLoginForm(apiBaseURL: string) {
-  return {
-    serverURL: apiBaseURL,
-    username: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_USERNAME ?? "" : "",
-    password: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PASSWORD ?? "" : ""
-  };
-}
+const sectionLabels: Record<TopLevelSection, string> = {
+  home: "主页",
+  community: "社区",
+  local: "本地",
+  manage: "管理"
+};
 
-function LoginModal({ workspace, language }: { workspace: ReturnType<typeof useP1Workspace>; language: DisplayLanguage }) {
-  const [form, setForm] = useState(() => defaultLoginForm(workspace.apiBaseURL));
-  const [submitting, setSubmitting] = useState(false);
-  const localDevSuggestion = "http://127.0.0.1:3001";
-  const authErrorMessage = workspace.authError ?? "";
-  const shouldSuggestLocalDevPort =
-    Boolean(workspace.authError) &&
-    form.serverURL.trim() !== localDevSuggestion &&
-    (authErrorMessage.includes("请求超时") || authErrorMessage.includes("无法连接服务"));
-
-  useEffect(() => {
-    if (!workspace.loginModalOpen) return;
-    setForm((current) => ({
-      ...current,
-      serverURL: workspace.apiBaseURL
-    }));
-    setSubmitting(false);
-  }, [workspace.apiBaseURL, workspace.loginModalOpen]);
-
-  if (!workspace.loginModalOpen) return null;
-
-  function updateField(event: ChangeEvent<HTMLInputElement>) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-      await workspace.login(form);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="modal-overlay" role="presentation" onClick={() => workspace.setLoginModalOpen(false)}>
-      <section className="login-modal-panel" role="dialog" aria-modal="true" aria-label="登录同步企业服务" data-testid="login-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="login-card-shell compact">
-          <div className="login-panel compact">
-            <div className="brand-mark">{shellBrand.icon}</div>
-            <div className="eyebrow">{localize(language, "登录", "Sign In")}</div>
-            <h1>{localize(language, "连接企业服务", "Connect to Enterprise Service")}</h1>
-            <p>{localize(language, "登录后同步市场、通知和权限。本地 Skill、工具和项目配置会继续保留。", "Sign in to sync market, notifications, and permissions. Local skills, tools, and projects stay on this device.")}</p>
-            <form className="form-stack" onSubmit={submit}>
-              <label className="field">
-                <span>{localize(language, "服务地址", "Server URL")}</span>
-                <input name="serverURL" value={form.serverURL} onChange={updateField} data-testid="login-server-url" />
-              </label>
-              <label className="field">
-                <span>{localize(language, "用户名", "Username")}</span>
-                <input name="username" value={form.username} onChange={updateField} data-testid="login-username" />
-              </label>
-              <label className="field">
-                <span>{localize(language, "密码", "Password")}</span>
-                <input name="password" type="password" value={form.password} onChange={updateField} data-testid="login-password" />
-              </label>
-              {workspace.authError ? (
-                <div className="callout warning">
-                  <WifiOff size={16} />
-                  <span>
-                    <strong>{workspace.authError}</strong>
-                    {shouldSuggestLocalDevPort ? (
-                      <small>
-                        {localize(language, "当前本机开发环境可改用", "For this local dev setup, try")} {localDevSuggestion}
-                      </small>
-                    ) : null}
-                  </span>
-                </div>
-              ) : null}
-              {shouldSuggestLocalDevPort ? (
-                <div className="inline-actions wrap">
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => setForm((current) => ({ ...current, serverURL: localDevSuggestion }))}
-                    disabled={submitting}
-                  >
-                    {localize(language, "改用本机 3001", "Use Local 3001")}
-                  </button>
-                </div>
-              ) : null}
-              <div className="inline-actions wrap">
-                <button className="btn btn-primary" type="submit" data-testid="login-submit" disabled={submitting}>
-                  <LogIn size={15} />
-                  {submitting ? localize(language, "正在连接...", "Connecting...") : localize(language, "登录", "Sign In")}
-                </button>
-                <button className="btn" type="button" onClick={() => workspace.setLoginModalOpen(false)} disabled={submitting}>{localize(language, "取消", "Cancel")}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function TopbarNotifications({ ui }: { ui: DesktopUIState }) {
+function TopbarNotifications({ ui }: { ui: ReturnType<typeof useDesktopUIState> }) {
   const [open, setOpen] = useState(false);
   const shellRef = useRef<HTMLDivElement | null>(null);
 
@@ -145,27 +42,88 @@ function TopbarNotifications({ ui }: { ui: DesktopUIState }) {
   }, [open]);
 
   return (
-    <div className="notification-shell" ref={shellRef}>
+    <div className="topbar-popover-shell" ref={shellRef}>
       <button
         className={open ? "icon-button notification-bell active" : "icon-button notification-bell"}
         type="button"
-        aria-label={localize(ui.language, "打开通知", "Open notifications")}
+        aria-label="打开通知"
         aria-expanded={open}
         aria-haspopup="dialog"
-        data-testid="notification-bell"
         onClick={() => setOpen((current) => !current)}
       >
         <Bell size={18} />
         {ui.notificationBadge ? <span className="notification-badge">{ui.notificationBadge}</span> : null}
       </button>
+      {open ? <NotificationPopover ui={ui} onSelect={(notification) => { setOpen(false); void ui.openDesktopNotification(notification); }} /> : null}
+    </div>
+  );
+}
+
+function AvatarMenu({ workspace, ui }: { workspace: ReturnType<typeof useP1Workspace>; ui: ReturnType<typeof useDesktopUIState> }) {
+  const [open, setOpen] = useState(false);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (shellRef.current && !shellRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="topbar-popover-shell" ref={shellRef}>
+      <button className={open ? "avatar-button active" : "avatar-button"} type="button" onClick={() => setOpen((current) => !current)}>
+        <span className="avatar-dot">{workspace.currentUser.displayName.slice(0, 2).toUpperCase()}</span>
+        <span className="avatar-copy">
+          <strong>{workspace.currentUser.displayName}</strong>
+          <small>{roleLabel(workspace.currentUser, ui.language)}</small>
+        </span>
+        <ChevronDown size={14} />
+      </button>
       {open ? (
-        <NotificationPopover
-          ui={ui}
-          onSelect={(notification) => {
-            setOpen(false);
-            void ui.openDesktopNotification(notification);
-          }}
-        />
+        <div className="avatar-menu">
+          <button className="menu-row" type="button" onClick={() => { setOpen(false); ui.openConnectionStatus(); }}>
+            {workspace.loggedIn && workspace.bootstrap.connection.status === "connected" ? <Wifi size={15} /> : <WifiOff size={15} />}
+            <span>{workspace.loggedIn ? "连接状态" : "本地模式"}</span>
+          </button>
+          <button className="menu-row" type="button" onClick={() => { setOpen(false); ui.openSettingsModal(); }}>
+            <Settings2 size={15} />
+            <span>设置</span>
+          </button>
+          {workspace.isAdminConnected ? (
+            <button className="menu-row" type="button" onClick={() => { setOpen(false); ui.openManagePane("reviews"); }}>
+              <Shield size={15} />
+              <span>进入管理</span>
+            </button>
+          ) : null}
+          {workspace.loggedIn ? (
+            <button className="menu-row" type="button" onClick={() => { setOpen(false); void workspace.logout(); }}>
+              <LogOut size={15} />
+              <span>退出登录</span>
+            </button>
+          ) : (
+            <button className="menu-row" type="button" onClick={() => { setOpen(false); workspace.setLoginModalOpen(true); }}>
+              <LogIn size={15} />
+              <span>登录</span>
+            </button>
+          )}
+        </div>
       ) : null}
     </div>
   );
@@ -174,130 +132,54 @@ function TopbarNotifications({ ui }: { ui: DesktopUIState }) {
 export function DesktopApp() {
   const workspace = useP1Workspace();
   const ui = useDesktopUIState(workspace);
-  const pageMeta = pageMetaFor(ui.language);
-  const settingsMeta = settingsMetaFor(ui.language);
-  const navigationGroups = buildNavigationGroups(ui.navigation);
-
-  const connection = workspace.bootstrap.connection.status;
-  const connectionLabel =
-    workspace.authState === "guest"
-      ? localize(ui.language, "本地模式", "Local Mode")
-      : connection === "connected"
-        ? localize(ui.language, "已连接", "Connected")
-        : connection === "connecting"
-          ? localize(ui.language, "正在连接", "Connecting")
-          : connection === "offline"
-            ? localize(ui.language, "离线模式", "Offline")
-            : localize(ui.language, "连接失败", "Connection Failed");
-
-  function globalSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    ui.navigate("market");
-  }
 
   return (
     <div className="desktop-shell">
-      <aside className="sidebar">
-        <div className="sidebar-main">
-          <div className="sidebar-brand">
-            <div className="brand-mark compact">{shellBrand.icon}</div>
-            <div>
-              <strong>{shellBrand.title}</strong>
-              <span>{shellBrand.subtitle}</span>
-            </div>
-          </div>
-
-          <div className="sidebar-nav-stack">
-            {navigationGroups.map((group, index) =>
-              group.pages.length > 0 ? (
-                <div className="sidebar-nav-group" key={group.id}>
-                  {index > 0 ? <div className="sidebar-divider" /> : null}
-                  <nav className="sidebar-nav" aria-label={group.id === "user" ? "primary navigation" : "admin navigation"}>
-                    {group.pages.map((page) => (
-                      <button key={page} className={ui.activePage === page ? "nav-item active" : "nav-item"} data-testid={`nav-${page}`} onClick={() => ui.navigate(page)}>
-                        <span className="nav-item-main">
-                          {pageMeta[page].icon}
-                          <span>{pageMeta[page].label}</span>
-                        </span>
-                        {pageMeta[page].mark ? <span className="nav-item-side"><small>{pageMeta[page].mark}</small></span> : null}
-                      </button>
-                    ))}
-                  </nav>
-                </div>
-              ) : null
-            )}
+      <header className="desktop-topbar">
+        <div className="brand-lockup">
+          <button className="brand-badge" type="button" onClick={ui.goHome} aria-label="回到主页">
+            A
+          </button>
+          <div className="brand-copy">
+            <strong>Enterprise Agent Hub</strong>
+            <span>Desktop Skills Workspace</span>
           </div>
         </div>
 
-        <div className="sidebar-footer">
-          <div className="sidebar-divider" />
-          <button className={ui.modal.type === "settings" ? "nav-item active" : "nav-item"} onClick={ui.openSettingsModal}>
-            <span className="nav-item-main">
-              {settingsMeta.icon}
-              <span>{settingsMeta.label}</span>
-            </span>
-          </button>
-        </div>
-      </aside>
+        <nav className="segment-nav" aria-label="一级导航">
+          {ui.navigationSections.map((section) => (
+            <button
+              key={section}
+              className={ui.activeSection === section ? "segment-button active" : "segment-button"}
+              type="button"
+              onClick={() => ui.navigateSection(section)}
+            >
+              {sectionLabels[section]}
+            </button>
+          ))}
+        </nav>
 
-      <div className="main-shell">
-        <header className="topbar">
-          <form className="search-shell top-search" onSubmit={globalSearch}>
-            <Search size={16} />
-            <input
-              aria-label={localize(ui.language, "全局搜索 Skill", "Global Skill Search")}
-              value={workspace.filters.query}
-              name="global-search"
-              placeholder={workspace.loggedIn ? localize(ui.language, "搜索 Skill 名称、标签、作者或 skillID", "Search by skill name, tag, author, or skill ID") : localize(ui.language, "登录后搜索企业 Skill", "Sign in to search enterprise skills")}
-              onChange={(event) => workspace.setFilters((current) => ({ ...current, query: event.target.value }))}
-            />
-          </form>
-
-          <button className={`status-chip ${connection}`} type="button" onClick={ui.openConnectionStatus} aria-label={localize(ui.language, "查看连接状态详情", "View connection details")}>
-            {connection === "connected" ? <CheckCircle2 size={16} /> : <WifiOff size={16} />}
-            {connectionLabel}
-          </button>
-
+        <div className="topbar-actions">
           <TopbarNotifications ui={ui} />
-
-          <div className="account-chip">
-            <div>
-              <strong>{workspace.currentUser.displayName}</strong>
-              <small>{roleLabel(workspace.currentUser, ui.language)}</small>
-            </div>
-            {workspace.loggedIn ? (
-              <button className="btn btn-small" onClick={() => void workspace.logout()}>
-                <LogOut size={15} />
-                {localize(ui.language, "退出", "Sign Out")}
-              </button>
-            ) : (
-              <button className="btn btn-primary btn-small" data-testid="open-login" onClick={() => workspace.requireAuth(null)}>
-                <LogIn size={15} />
-                {localize(ui.language, "登录", "Sign In")}
-              </button>
-            )}
-          </div>
-        </header>
-
-        <main className="page-shell">
-          <ActivePageContent workspace={workspace} ui={ui} />
-        </main>
-      </div>
-
-      {ui.drawerSkill ? (
-        <div className="drawer-overlay" role="presentation" onClick={ui.closeSkillDetail}>
-          <div className="drawer-panel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="drawer-close-row">
-               <button className="btn btn-small" onClick={ui.closeSkillDetail}>关闭详情</button>
-            </div>
-            <SkillDetailPanel skill={ui.drawerSkill} workspace={workspace} ui={ui} standalone />
-          </div>
+          <AvatarMenu workspace={workspace} ui={ui} />
         </div>
-      ) : null}
+      </header>
 
-      <LoginModal workspace={workspace} language={ui.language} />
-      <DesktopModals workspace={workspace} ui={ui} />
-      <FlashToast ui={ui} />
+      <main className="desktop-stage">
+        {ui.skillDetail ? (
+          <SkillDetailStage workspace={workspace} ui={ui} detail={ui.skillDetail} />
+        ) : (
+          <>
+            {ui.activeSection === "home" ? <HomeSection workspace={workspace} ui={ui} /> : null}
+            {ui.activeSection === "community" ? <CommunitySection workspace={workspace} ui={ui} /> : null}
+            {ui.activeSection === "local" ? <LocalSection workspace={workspace} ui={ui} /> : null}
+            {ui.activeSection === "manage" ? <ManageSection workspace={workspace} ui={ui} /> : null}
+          </>
+        )}
+      </main>
+
+      <DesktopOverlays workspace={workspace} ui={ui} />
+      <FlashToast flash={ui.flash} onClear={ui.clearFlash} />
     </div>
   );
 }

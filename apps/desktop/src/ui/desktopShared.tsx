@@ -1,17 +1,9 @@
-import type { ReactNode } from "react";
 import {
-  Archive,
   BookOpenCheck,
-  Building2,
-  ClipboardList,
-  Command,
+  Boxes,
   FolderOpen,
-  LayoutDashboard,
-  Settings2,
   ShieldCheck,
   Sparkles,
-  SquareLibrary,
-  Store,
   TerminalSquare,
   TestTube2,
   Workflow
@@ -19,20 +11,17 @@ import {
 import type {
   AdapterStatus,
   DetectionMethod,
-  NavigationPageID,
-  PageID,
   PreferenceState,
   PublishDraft,
   PublishScopeType,
   ReviewAction,
   ReviewDecisionDraft,
+  SkillSummary,
   SubmissionType,
-  ToolConfig,
-  SkillSummary
-} from "../domain/p1";
-import type { P1WorkspaceState } from "../state/useP1Workspace";
-import type { ShellNavigationPageID } from "../state/ui/desktopNavigationGroups.ts";
-import { formatDisplayDate } from "../utils/displayDate";
+  ToolConfig
+} from "../domain/p1.ts";
+import type { P1WorkspaceState } from "../state/useP1Workspace.ts";
+import { formatDisplayDate } from "../utils/displayDate.ts";
 
 export type DisplayLanguage = "zh-CN" | "en-US";
 
@@ -40,35 +29,29 @@ export function localize(language: DisplayLanguage, zhCN: string, enUS: string):
   return language === "en-US" ? enUS : zhCN;
 }
 
-export function pageMetaFor(language: DisplayLanguage): Record<ShellNavigationPageID, { label: string; icon: ReactNode; mark?: string }> {
-  return {
-    home: { label: localize(language, "首页", "Home"), icon: <LayoutDashboard size={18} /> },
-    market: { label: localize(language, "市场", "Market"), icon: <Store size={18} /> },
-    my_installed: { label: localize(language, "已安装", "Installed"), icon: <SquareLibrary size={18} /> },
-    publisher: { label: localize(language, "发布中心", "Publisher Center"), icon: <Archive size={18} /> },
-    target_management: { label: localize(language, "目标管理", "Target Management"), icon: <Workflow size={18} /> },
-    review: { label: localize(language, "审核", "Reviews"), icon: <ClipboardList size={18} /> },
-    admin_departments: { label: localize(language, "部门管理", "Departments"), icon: <Building2 size={18} /> },
-    admin_users: { label: localize(language, "用户管理", "Users"), icon: <ShieldCheck size={18} /> },
-    admin_skills: { label: localize(language, "Skill 管理", "Skill Admin"), icon: <FolderOpen size={18} /> },
-  };
-}
-
-export function settingsMetaFor(language: DisplayLanguage) {
-  return { label: localize(language, "设置", "Settings"), icon: <Settings2 size={18} /> };
-}
-
-export function categoryIcon(skill: SkillSummary): ReactNode {
-  if (skill.category.includes("治理") || skill.category.includes("安全")) return <ShieldCheck size={18} />;
-  if (skill.category.includes("文档")) return <BookOpenCheck size={18} />;
-  if (skill.category.includes("测试")) return <TestTube2 size={18} />;
-  if (skill.category.includes("工具")) return <Workflow size={18} />;
-  if (skill.category.includes("CLI")) return <TerminalSquare size={18} />;
-  return <Sparkles size={18} />;
-}
-
 export function formatDate(value: string | null, language: DisplayLanguage = "zh-CN"): string {
   return formatDisplayDate(value, language);
+}
+
+export function skillInitials(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "SK";
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+  }
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
+export function categoryIcon(skill: SkillSummary) {
+  if (skill.category.includes("治理") || skill.category.includes("安全")) return <ShieldCheck size={16} />;
+  if (skill.category.includes("文档")) return <BookOpenCheck size={16} />;
+  if (skill.category.includes("测试")) return <TestTube2 size={16} />;
+  if (skill.category.includes("工具")) return <Workflow size={16} />;
+  if (skill.category.includes("CLI")) return <TerminalSquare size={16} />;
+  if (skill.category.includes("自动化")) return <Boxes size={16} />;
+  if (skill.category.includes("项目")) return <FolderOpen size={16} />;
+  return <Sparkles size={16} />;
 }
 
 export function statusLabel(skill: SkillSummary, language: DisplayLanguage = "zh-CN"): string {
@@ -81,9 +64,25 @@ export function statusLabel(skill: SkillSummary, language: DisplayLanguage = "zh
     case "enabled":
       return localize(language, "已启用", "Enabled");
     case "update_available":
-      return localize(language, "有更新", "Update Available");
+      return localize(language, "待更新", "Update Available");
     case "blocked":
       return localize(language, "不可安装", "Blocked");
+  }
+}
+
+export function statusTone(skill: SkillSummary): "success" | "warning" | "danger" | "info" | "neutral" {
+  if (skill.isScopeRestricted) return "warning";
+  switch (skill.installState) {
+    case "enabled":
+    case "installed":
+      return "success";
+    case "update_available":
+      return "warning";
+    case "blocked":
+      return "danger";
+    case "not_installed":
+    default:
+      return "info";
   }
 }
 
@@ -97,12 +96,6 @@ export function roleLabel(user: P1WorkspaceState["currentUser"], language: Displ
   if (user.role === "guest") return localize(language, "本地模式", "Local Mode");
   if (user.role !== "admin") return localize(language, "普通用户", "User");
   return localize(language, `管理员 L${user.adminLevel ?? "?"}`, `Admin L${user.adminLevel ?? "?"}`);
-}
-
-export function labelForPage(page: PageID, language: DisplayLanguage = "zh-CN"): string {
-  if (page === "detail") return localize(language, "详情", "Detail");
-  if (page === "notifications") return localize(language, "通知", "Notifications");
-  return pageMetaFor(language)[page].label;
 }
 
 export function publishScopeLabel(scope: PublishDraft["scope"], language: DisplayLanguage = "zh-CN"): string {
@@ -119,6 +112,22 @@ export function publishScopeLabel(scope: PublishDraft["scope"], language: Displa
         selected_departments: "指定多个部门",
         all_employees: "全员可用"
       }[scope];
+}
+
+export function publishVisibilityLabel(visibility: PublishDraft["visibility"], language: DisplayLanguage = "zh-CN"): string {
+  return language === "en-US"
+    ? {
+        private: "Private",
+        summary_visible: "Summary Visible",
+        detail_visible: "Detail Visible",
+        public_installable: "Public Installable"
+      }[visibility]
+    : {
+        private: "默认不公开",
+        summary_visible: "摘要公开",
+        detail_visible: "详情公开",
+        public_installable: "全员可安装"
+      }[visibility];
 }
 
 export function submissionTypeLabel(type: SubmissionType, language: DisplayLanguage = "zh-CN"): string {
@@ -179,22 +188,6 @@ export function reviewActionLabel(action: ReviewAction, language: DisplayLanguag
       }[action];
 }
 
-export function publishVisibilityLabel(visibility: PublishDraft["visibility"], language: DisplayLanguage = "zh-CN"): string {
-  return language === "en-US"
-    ? {
-        private: "Private",
-        summary_visible: "Summary Visible",
-        detail_visible: "Detail Visible",
-        public_installable: "Public Installable"
-      }[visibility]
-    : {
-        private: "默认不公开",
-        summary_visible: "摘要公开",
-        detail_visible: "详情公开",
-        public_installable: "全员可安装"
-      }[visibility];
-}
-
 export function reviewDecisionLabel(decision: ReviewDecisionDraft["decision"], language: DisplayLanguage = "zh-CN"): string {
   return language === "en-US"
     ? {
@@ -218,7 +211,7 @@ export function themeLabel(theme: PreferenceState["theme"], language: DisplayLan
       }[theme]
     : {
         classic: "经典白",
-        fresh: "清爽绿",
+        fresh: "清爽蓝",
         contrast: "高对比"
       }[theme];
 }
@@ -298,31 +291,6 @@ export function flattenDepartments(nodes: P1WorkspaceState["adminData"]["departm
   return items;
 }
 
-export const publishLifecycle = [
-  {
-    title: "上传成功",
-    body: "文件已接收，发布者仍可在正式接入后撤回。"
-  },
-  {
-    title: "系统初审中",
-    body: "结构、元数据和风险字段会进入自动校验。"
-  },
-  {
-    title: "待人工复核",
-    body: "异常不直接拒绝，而是进入审核员复核队列。"
-  },
-  {
-    title: "待管理员审核",
-    body: "审核链路按组织关系和权限动态计算。"
-  },
-  {
-    title: "已发布",
-    body: "正式接入后将进入市场；新版本审核期间旧版本继续可用。"
-  }
-];
-
-export const shellBrand = {
-  title: "Enterprise Agent Hub",
-  subtitle: "Skill Workspace",
-  icon: <Command size={18} />
-};
+export function scopeLabel(scope: PublishScopeType, language: DisplayLanguage = "zh-CN"): string {
+  return publishScopeLabel(scope, language);
+}

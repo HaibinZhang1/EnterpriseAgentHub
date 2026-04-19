@@ -8,6 +8,7 @@ This repository currently contains product documentation and a static UI prototy
 - `docs/DetailedDesign/` contains implementation-oriented design notes. Start with `docs/DetailedDesign/index.md` before adding architecture or deployment code.
 - `ui-prototype/` is a standalone prototype: `index.html`, `app.js`, and `styles.css`. It is vanilla HTML/CSS/JavaScript; no package manager or build system is present yet.
 - `.omx/` is local orchestration state and should not be treated as product source.
+- 如果本次修改涉及到需求上的变动，请同步修改'docs/RequirementDocument/'
 
 ## Build, Test, and Development Commands
 

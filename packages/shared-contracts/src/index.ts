@@ -458,6 +458,8 @@ export interface DepartmentNode {
   readonly status: string;
   readonly userCount: number;
   readonly skillCount: number;
+  /** Active admin users in this department subtree, matching userCount subtree semantics. */
+  readonly adminCount: number;
   readonly children: readonly DepartmentNode[];
 }
 
@@ -467,9 +469,11 @@ export interface AdminUser {
   readonly displayName: string;
   readonly departmentID: DepartmentID;
   readonly departmentName: string;
+  readonly departmentPath: string;
   readonly role: "normal_user" | "admin";
   readonly adminLevel: number | null;
   readonly status: "active" | "frozen" | "deleted";
+  readonly lastLoginAt: ISODateTimeString | null;
   readonly publishedSkillCount: number;
   readonly starCount: number;
 }
@@ -477,10 +481,14 @@ export interface AdminUser {
 export interface AdminSkill {
   readonly skillID: SkillID;
   readonly displayName: string;
+  readonly description: string;
   readonly publisherName: string;
   readonly departmentID: DepartmentID;
   readonly departmentName: string;
+  readonly category: string | null;
   readonly version: SemVerString;
+  readonly currentVersionRiskLevel: RiskLevel;
+  readonly currentVersionReviewSummary: string | null;
   readonly status: SkillStatus;
   readonly visibilityLevel: VisibilityLevel;
   readonly starCount: number;

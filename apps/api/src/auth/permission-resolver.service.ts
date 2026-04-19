@@ -7,6 +7,7 @@ const basePermissions: MenuPermission[] = [
   'my_installed',
   'publisher',
   'target_management',
+  'notifications',
 ];
 
 const adminPermissions: MenuPermission[] = [
@@ -22,6 +23,7 @@ const adminBasePermissions: MenuPermission[] = [
   'my_installed',
   'publisher',
   'target_management',
+  'notifications',
 ];
 
 @Injectable()

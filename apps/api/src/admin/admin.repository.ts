@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { SkillStatus, VisibilityLevel } from '../common/p1-contracts';
+import { RiskLevel, SkillStatus, VisibilityLevel } from '../common/p1-contracts';
 import { DatabaseService } from '../database/database.service';
 
 export interface ActorRow {
@@ -22,6 +22,7 @@ export interface DepartmentRow {
   status: string;
   user_count: string;
   skill_count: string;
+  admin_count: string;
 }
 
 export interface UserRow {
@@ -30,25 +31,29 @@ export interface UserRow {
   display_name: string;
   department_id: string;
   department_name: string;
+  department_path: string;
   role: 'normal_user' | 'admin';
   admin_level: number | null;
   status: 'active' | 'frozen' | 'deleted';
+  last_login_at: Date | null;
   published_skill_count: string;
   star_count: string;
 }
 
-export interface ManagedUserRow extends UserRow {
-  department_path: string;
-}
+export type ManagedUserRow = UserRow;
 
 export interface SkillRow {
   skill_id: string;
   display_name: string;
+  description: string;
   publisher_name: string;
   department_id: string;
   department_name: string;
   department_path: string;
+  category: string | null;
   version: string;
+  current_version_risk_level: RiskLevel;
+  current_version_review_summary: string | null;
   status: SkillStatus;
   visibility_level: VisibilityLevel;
   star_count: string;
@@ -112,7 +117,15 @@ export class AdminRepository {
           SELECT count(*)
           FROM skills s
           WHERE s.department_id = d.id
-        ) AS skill_count
+        ) AS skill_count,
+        (
+          SELECT count(*)
+          FROM users u
+          JOIN departments du ON du.id = u.department_id
+          WHERE u.role = 'admin'
+            AND u.status = 'active'
+            AND (du.id = d.id OR du.path LIKE d.path || '/%')
+        ) AS admin_count
       FROM departments d
       WHERE d.id = $1 OR d.path LIKE $2
       ORDER BY d.path ASC
@@ -186,9 +199,11 @@ export class AdminRepository {
         u.display_name,
         u.department_id,
         d.name AS department_name,
+        d.path AS department_path,
         u.role,
         u.admin_level,
         u.status,
+        (SELECT MAX(session.created_at) FROM auth_sessions session WHERE session.user_id = u.id) AS last_login_at,
         (SELECT count(*) FROM skills s WHERE s.author_id = u.id) AS published_skill_count,
         (SELECT count(*) FROM skill_stars ss WHERE ss.user_id = u.id) AS star_count
       FROM users u
@@ -240,6 +255,7 @@ export class AdminRepository {
         u.role,
         u.admin_level,
         u.status,
+        (SELECT MAX(session.created_at) FROM auth_sessions session WHERE session.user_id = u.id) AS last_login_at,
         (SELECT count(*) FROM skills s WHERE s.author_id = u.id) AS published_skill_count,
         (SELECT count(*) FROM skill_stars ss WHERE ss.user_id = u.id) AS star_count
       FROM users u
@@ -290,11 +306,15 @@ export class AdminRepository {
       SELECT
         s.skill_id,
         s.display_name,
+        s.description,
         COALESCE(u.display_name, '未知发布者') AS publisher_name,
         d.id AS department_id,
         d.name AS department_name,
         d.path AS department_path,
+        s.category,
         v.version,
+        v.risk_level AS current_version_risk_level,
+        v.review_summary AS current_version_review_summary,
         s.status,
         s.visibility_level,
         (SELECT count(*) FROM skill_stars ss WHERE ss.skill_id = s.id) AS star_count,
@@ -317,11 +337,15 @@ export class AdminRepository {
       SELECT
         s.skill_id,
         s.display_name,
+        s.description,
         COALESCE(u.display_name, '未知发布者') AS publisher_name,
         d.id AS department_id,
         d.name AS department_name,
         d.path AS department_path,
+        s.category,
         v.version,
+        v.risk_level AS current_version_risk_level,
+        v.review_summary AS current_version_review_summary,
         s.status,
         s.visibility_level,
         (SELECT count(*) FROM skill_stars ss WHERE ss.skill_id = s.id) AS star_count,

@@ -3,58 +3,138 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   DesktopModalState,
   NotificationListFilter,
+  PageID,
   PreferenceState,
   ReviewBoardTab,
-  SkillSummary,
+  SkillSummary
 } from "../domain/p1.ts";
 import type { P1WorkspaceState } from "./useP1Workspace.ts";
-import type { DisplayLanguage } from "../ui/desktopShared.tsx";
 import { buildPublishPrecheck } from "./ui/publishPrecheck.ts";
 import { defaultPreferences, loadPreferences, PREFERENCES_STORAGE_KEY, resolveDisplayLanguage } from "./ui/useDesktopPreferences.ts";
-import { useDesktopNavigation } from "./ui/useDesktopNavigation.ts";
 import { useTargetsModalState } from "./ui/useTargetsModalState.ts";
 import { useLocalConfigEditors } from "./ui/useLocalConfigEditors.ts";
+import { useInstalledSkillsView } from "./ui/useInstalledSkillsView.ts";
 import type { AppUpdateState, DesktopNotificationItem } from "./ui/desktopNotifications.ts";
 import { deriveDesktopNotifications, notificationBadgeLabel, resolveDesktopNotificationAction } from "./ui/desktopNotifications.ts";
 import type { InstalledListFilter } from "./ui/installedSkillsTypes.ts";
+import type { DisplayLanguage } from "../ui/desktopShared.tsx";
 
 export { buildPublishPrecheck } from "./ui/publishPrecheck.ts";
 export { collectInstalledSkillIssues } from "./ui/installedSkillSelectors.ts";
 
-interface FlashMessage {
+export type TopLevelSection = "home" | "community" | "local" | "manage";
+export type CommunityPane = "skills" | "mcp" | "plugins" | "publish" | "mine";
+export type LocalPane = "skills" | "tools" | "projects";
+export type ManagePane = "reviews" | "skills" | "departments" | "users";
+export type PublisherPane = "compose" | "mine";
+
+export type OverlayState =
+  | { kind: "none" }
+  | { kind: "skill_detail"; skillID: string; source: TopLevelSection }
+  | { kind: "publisher"; pane: PublisherPane }
+  | { kind: "diagnostics" };
+
+export interface FlashMessage {
   tone: "info" | "warning" | "danger" | "success";
   title: string;
   body: string;
 }
 
-interface ConfirmModalState extends Exclude<DesktopModalState, { type: "none" | "targets" | "tool_editor" | "project_editor" | "connection_status" | "app_update" | "settings" }> {
+export interface ConfirmModalState extends Exclude<DesktopModalState, { type: "none" | "targets" | "tool_editor" | "project_editor" | "connection_status" | "app_update" | "settings" }> {
   onConfirm?: () => Promise<void> | void;
 }
 
 export function presentModalWithDrawerDismissal(
   nextModal: DesktopModalState,
-  input: {
+  handlers: {
     closeSkillDetail: () => void;
-    setModal: (modal: DesktopModalState) => void;
+    setModal: (nextModal: DesktopModalState) => void;
   }
-) {
-  if (nextModal.type !== "none") {
-    input.closeSkillDetail();
-  }
-  input.setModal(nextModal);
+): void {
+  handlers.closeSkillDetail();
+  handlers.setModal(nextModal);
 }
 
-export function presentConfirmWithDrawerDismissal<T>(
-  nextConfirm: T | null,
-  input: {
+export function presentConfirmWithDrawerDismissal(
+  nextConfirm: ConfirmModalState | null,
+  handlers: {
     closeSkillDetail: () => void;
-    setConfirmModal: (confirm: T | null) => void;
+    setConfirmModal: (nextConfirm: ConfirmModalState | null) => void;
   }
-) {
+): void {
   if (nextConfirm) {
-    input.closeSkillDetail();
+    handlers.closeSkillDetail();
   }
-  input.setConfirmModal(nextConfirm);
+  handlers.setConfirmModal(nextConfirm);
+}
+
+export function deriveTopLevelNavigation(input: {
+  isAdminConnected: boolean;
+}): TopLevelSection[] {
+  return input.isAdminConnected ? ["home", "community", "local", "manage"] : ["home", "community", "local"];
+}
+
+export function mapLegacyPageToView(page: PageID): {
+  section: TopLevelSection;
+  communityPane?: CommunityPane;
+  localPane?: LocalPane;
+  managePane?: ManagePane;
+} {
+  switch (page) {
+    case "market":
+      return { section: "community", communityPane: "skills" };
+    case "my_installed":
+      return { section: "local", localPane: "skills" };
+    case "target_management":
+      return { section: "local", localPane: "tools" };
+    case "review":
+      return { section: "manage", managePane: "reviews" };
+    case "admin_departments":
+      return { section: "manage", managePane: "departments" };
+    case "admin_users":
+      return { section: "manage", managePane: "users" };
+    case "admin_skills":
+      return { section: "manage", managePane: "skills" };
+    case "publisher":
+      return { section: "community", communityPane: "mine" };
+    case "notifications":
+    case "home":
+    case "detail":
+    default:
+      return { section: "home" };
+  }
+}
+
+export function legacyPageForView(input: {
+  section: TopLevelSection;
+  communityPane: CommunityPane;
+  localPane: LocalPane;
+  managePane: ManagePane;
+  overlay: OverlayState;
+}): Exclude<PageID, "detail" | "notifications"> {
+  if (input.overlay.kind === "diagnostics") return "target_management";
+  if (input.overlay.kind === "publisher") return "publisher";
+
+  switch (input.section) {
+    case "community":
+      return input.communityPane === "publish" || input.communityPane === "mine" ? "publisher" : "market";
+    case "local":
+      return input.localPane === "skills" ? "my_installed" : "target_management";
+    case "manage":
+      switch (input.managePane) {
+        case "reviews":
+          return "review";
+        case "skills":
+          return "admin_skills";
+        case "departments":
+          return "admin_departments";
+        case "users":
+          return "admin_users";
+      }
+    case "home":
+    default:
+      return "home";
+  }
 }
 
 function defaultAppUpdateState(): AppUpdateState {
@@ -62,13 +142,13 @@ function defaultAppUpdateState(): AppUpdateState {
     available: true,
     currentVersion: packageInfo.version,
     latestVersion: "0.1.3",
-    summary: "通知入口收敛、审核跳转联动与版本提示体验优化。",
+    summary: "顶栏导航、发布中心覆盖层和本地工作台重建。",
     highlights: [
-      "通知入口收敛到右上角铃铛面板",
-      "只保留审核进度、Skill 更新、软件更新三类通知",
-      "新增轻量更新提示弹窗占位"
+      "一级导航收敛为主页、社区、本地、管理",
+      "发布中心改为覆盖层工作台",
+      "本地工具、项目和诊断统一收口到本地页"
     ],
-    occurredAt: "2026-04-16T09:00:00.000Z",
+    occurredAt: "2026-04-18T09:00:00.000Z",
     unread: true,
     releaseURL: null,
     actionLabel: "查看更新"
@@ -76,6 +156,14 @@ function defaultAppUpdateState(): AppUpdateState {
 }
 
 export function useDesktopUIState(workspace: P1WorkspaceState) {
+  const initialView = mapLegacyPageToView(workspace.activePage);
+  const [activeSection, setActiveSection] = useState<TopLevelSection>(initialView.section);
+  const [communityPane, setCommunityPane] = useState<CommunityPane>(initialView.communityPane ?? "skills");
+  const [localPane, setLocalPane] = useState<LocalPane>(initialView.localPane ?? "skills");
+  const [managePane, setManagePane] = useState<ManagePane>(initialView.managePane ?? "reviews");
+  const [skillDetail, setSkillDetail] = useState<{ skillID: string; source: TopLevelSection } | null>(null);
+  const [overlay, setOverlay] = useState<OverlayState>({ kind: "none" });
+
   const [notificationFilter, setNotificationFilter] = useState<NotificationListFilter>("all");
   const [reviewTab, setReviewTab] = useState<ReviewBoardTab>("pending");
   const [installedFilter, setInstalledFilter] = useState<InstalledListFilter>("all");
@@ -96,11 +184,6 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     document.body.dataset.theme = preferences.theme;
     document.documentElement.lang = language;
   }, [language, preferences]);
-
-  const visibleSkillDetail = useMemo(
-    () => workspace.selectedSkill ?? workspace.marketSkills[0] ?? workspace.installedSkills[0] ?? null,
-    [workspace.installedSkills, workspace.marketSkills, workspace.selectedSkill]
-  );
 
   const desktopNotifications = useMemo(
     () => deriveDesktopNotifications({ notifications: workspace.notifications, appUpdate }),
@@ -127,6 +210,46 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     [reviewTab, workspace.adminData.reviews]
   );
 
+  const installedView = useInstalledSkillsView(workspace, { installedFilter, setInstalledFilter });
+
+  const navigationSections = useMemo(
+    () => deriveTopLevelNavigation({ isAdminConnected: workspace.isAdminConnected }),
+    [workspace.isAdminConnected]
+  );
+
+  const visibleSkillDetail = useMemo(
+    () => workspace.selectedSkill ?? workspace.marketSkills[0] ?? workspace.installedSkills[0] ?? null,
+    [workspace.installedSkills, workspace.marketSkills, workspace.selectedSkill]
+  );
+
+  const desiredLegacyPage = useMemo(
+    () => legacyPageForView({ section: activeSection, communityPane, localPane, managePane, overlay }),
+    [activeSection, communityPane, localPane, managePane, overlay]
+  );
+
+  useEffect(() => {
+    if (desiredLegacyPage === "market" && !workspace.loggedIn) return;
+    if (
+      (desiredLegacyPage === "review" || desiredLegacyPage === "admin_departments" || desiredLegacyPage === "admin_users" || desiredLegacyPage === "admin_skills") &&
+      !workspace.isAdminConnected
+    ) {
+      return;
+    }
+    if (workspace.activePage !== desiredLegacyPage) {
+      workspace.openPage(desiredLegacyPage);
+    }
+  }, [desiredLegacyPage, workspace]);
+
+  useEffect(() => {
+    if (activeSection === "manage" && !workspace.isAdminConnected) {
+      setActiveSection("home");
+    }
+  }, [activeSection, workspace.isAdminConnected]);
+
+  const closeSkillDetail = useCallback(() => {
+    setSkillDetail(null);
+  }, []);
+
   const clearFlash = useCallback(() => {
     setFlash(null);
   }, []);
@@ -137,24 +260,76 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     workspace.clearProgress();
   }, [workspace]);
 
-  const navigationState = useDesktopNavigation({
-    workspace,
-    visibleSkillDetail
-  });
-
   const presentBlockingModal = useCallback((nextModal: DesktopModalState) => {
-    presentModalWithDrawerDismissal(nextModal, {
-      closeSkillDetail: navigationState.closeSkillDetail,
-      setModal
-    });
-  }, [navigationState.closeSkillDetail]);
+    presentModalWithDrawerDismissal(nextModal, { closeSkillDetail, setModal });
+  }, [closeSkillDetail]);
 
   const presentBlockingConfirm = useCallback((nextConfirm: ConfirmModalState | null) => {
-    presentConfirmWithDrawerDismissal(nextConfirm, {
-      closeSkillDetail: navigationState.closeSkillDetail,
-      setConfirmModal
-    });
-  }, [navigationState.closeSkillDetail]);
+    presentConfirmWithDrawerDismissal(nextConfirm, { closeSkillDetail, setConfirmModal });
+  }, [closeSkillDetail]);
+
+  const goHome = useCallback(() => {
+    setOverlay({ kind: "none" });
+    setSkillDetail(null);
+    setActiveSection("home");
+  }, []);
+
+  const navigateSection = useCallback((section: TopLevelSection) => {
+    if (section === "manage" && !workspace.isAdminConnected) return;
+    setSkillDetail(null);
+    setOverlay((current) => (current.kind === "diagnostics" ? { kind: "none" } : current));
+    setActiveSection(section);
+  }, [workspace.isAdminConnected]);
+
+  const openCommunityPane = useCallback((pane: CommunityPane) => {
+    setSkillDetail(null);
+    setActiveSection("community");
+    setCommunityPane(pane);
+  }, []);
+
+  const openLocalPane = useCallback((pane: LocalPane) => {
+    setSkillDetail(null);
+    setActiveSection("local");
+    setLocalPane(pane);
+  }, []);
+
+  const openManagePane = useCallback((pane: ManagePane) => {
+    if (!workspace.isAdminConnected) return;
+    setSkillDetail(null);
+    setActiveSection("manage");
+    setManagePane(pane);
+  }, [workspace.isAdminConnected]);
+
+  const setPublisherPane = useCallback((pane: PublisherPane) => {
+    openCommunityPane(pane === "compose" ? "publish" : "mine");
+  }, [openCommunityPane]);
+
+  const openSkillDetail = useCallback((skillID: string, source: TopLevelSection = activeSection) => {
+    workspace.selectSkill(skillID);
+    setSkillDetail({ skillID, source });
+  }, [activeSection, workspace]);
+
+  const openDiagnosticsOverlay = useCallback(() => {
+    setSkillDetail(null);
+    setOverlay({ kind: "diagnostics" });
+    workspace.openPage("target_management");
+  }, [workspace]);
+
+  const closeOverlay = useCallback(() => {
+    setOverlay({ kind: "none" });
+  }, []);
+
+  const openConnectionStatus = useCallback(() => {
+    presentBlockingModal({ type: "connection_status" });
+  }, [presentBlockingModal]);
+
+  const openSettingsModal = useCallback(() => {
+    presentBlockingModal({ type: "settings" });
+  }, [presentBlockingModal]);
+
+  const openConfirm = useCallback((input: Omit<NonNullable<ConfirmModalState>, "type">) => {
+    presentBlockingConfirm({ type: "confirm", ...input });
+  }, [presentBlockingConfirm]);
 
   const markAppUpdateRead = useCallback(() => {
     setAppUpdate((current) => (current.unread ? { ...current, unread: false } : current));
@@ -176,7 +351,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     setFlash({
       tone: "info",
       title: "更新入口待接入",
-      body: "当前版本先展示版本信息与更新说明，真实下载/升级流程后续接入。"
+      body: "当前版本先展示版本信息与更新说明，真实下载和升级流程后续接入。"
     });
   }, [appUpdate.releaseURL, markAppUpdateRead]);
 
@@ -205,7 +380,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
       if (action.reviewID) {
         workspace.adminData.setSelectedReviewID(action.reviewID);
       }
-      navigationState.navigate("review");
+      openManagePane("reviews");
       await readPromise;
       return;
     }
@@ -214,17 +389,17 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
       if (action.submissionID) {
         workspace.publisherData.setSelectedPublisherSubmissionID(action.submissionID);
       }
-      navigationState.navigate("publisher");
+      openCommunityPane("mine");
       await readPromise;
       return;
     }
 
     if (action.kind === "my_installed") {
       setInstalledFilter(action.installedFilter);
+      openLocalPane("skills");
       if (action.skillID) {
-        navigationState.openSkillDetail(action.skillID, "my_installed");
-      } else {
-        navigationState.navigate("my_installed");
+        workspace.selectSkill(action.skillID);
+        openSkillDetail(action.skillID, "local");
       }
       await readPromise;
       return;
@@ -234,8 +409,11 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     await readPromise;
   }, [
     markAppUpdateRead,
-    navigationState,
     openAppUpdateModal,
+    openCommunityPane,
+    openLocalPane,
+    openManagePane,
+    openSkillDetail,
     workspace
   ]);
 
@@ -244,7 +422,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     const body = operation === "install"
       ? "安装会下载包、校验 SHA-256，并写入 Central Store。"
       : skill.hasLocalHashDrift
-        ? "检测到本地内容已变更，本次更新会直接覆盖 Central Store 中的本地内容。"
+        ? "检测到本地内容已变更，本次更新会覆盖 Central Store 中的本地内容。"
         : "更新会下载新包、校验 SHA-256，并覆盖 Central Store 中的旧版本。";
     presentBlockingConfirm({
       type: "confirm",
@@ -292,18 +470,6 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     setFlash
   });
 
-  const openConnectionStatus = useCallback(() => {
-    presentBlockingModal({ type: "connection_status" });
-  }, [presentBlockingModal]);
-
-  const openSettingsModal = useCallback(() => {
-    presentBlockingModal({ type: "settings" });
-  }, [presentBlockingModal]);
-
-  const openConfirm = useCallback((input: Omit<NonNullable<ConfirmModalState>, "type">) => {
-    presentBlockingConfirm({ type: "confirm", ...input });
-  }, [presentBlockingConfirm]);
-
   const localConfigEditors = useLocalConfigEditors({
     workspace,
     closeModal,
@@ -312,11 +478,12 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   });
 
   return {
-    activePage: navigationState.activePage,
-    navigation: navigationState.navigation,
-    lastShellPage: navigationState.lastShellPage,
-    drawerOpen: navigationState.drawerOpen,
-    drawerSkill: navigationState.drawerSkill,
+    activeSection,
+    communityPane,
+    localPane,
+    managePane,
+    skillDetail,
+    overlay,
     modal,
     confirmModal,
     flash,
@@ -326,20 +493,33 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     installedFilter,
     preferences,
     appUpdate,
-    toolDraft: localConfigEditors.toolDraft,
-    projectDraft: localConfigEditors.projectDraft,
-    targetDrafts: targetsModalState.targetDrafts,
+    navigationSections,
     desktopNotifications,
     visibleNotifications,
     notificationUnreadCount,
     notificationBadge,
     filteredReviews,
+    visibleSkillDetail,
+    toolDraft: localConfigEditors.toolDraft,
+    projectDraft: localConfigEditors.projectDraft,
+    targetDrafts: targetsModalState.targetDrafts,
+    installedView,
 
     clearFlash,
     closeModal,
-    navigate: navigationState.navigate,
-    openSkillDetail: navigationState.openSkillDetail,
-    closeSkillDetail: navigationState.closeSkillDetail,
+    closeOverlay,
+    closeSkillDetail,
+    goHome,
+    navigateSection,
+    openCommunityPane,
+    openLocalPane,
+    openManagePane,
+    setCommunityPane,
+    setLocalPane,
+    setManagePane,
+    setPublisherPane,
+    openSkillDetail,
+    openDiagnosticsOverlay,
     openDesktopNotification,
     openInstallConfirm,
     openUninstallConfirm,

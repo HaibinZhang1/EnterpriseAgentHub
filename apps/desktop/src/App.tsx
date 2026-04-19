@@ -1,5 +1,6 @@
-import { DesktopApp } from "./ui/DesktopApp";
+import { DesktopApp } from "./ui/DesktopApp.tsx";
+import "./styles.css";
 
-export function App() {
+export default function App() {
   return <DesktopApp />;
 }
