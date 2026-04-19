@@ -10,6 +10,17 @@ This repository currently contains product documentation and a static UI prototy
 - `.omx/` is local orchestration state and should not be treated as product source.
 - 如果本次修改涉及到需求上的变动，请同步修改'docs/RequirementDocument/'
 
+## Agent Execution Principles
+
+These rules adapt the core ideas from `multica-ai/andrej-karpathy-skills`: reduce hidden assumptions, avoid unnecessary complexity, keep diffs surgical, and make completion verifiable.
+
+- Think before coding: state important assumptions, surface tradeoffs, and ask only when ambiguity cannot be resolved safely from repository context. If a simpler approach is available, prefer it or explain why it is insufficient.
+- Simplicity first: implement the minimum code that satisfies the request. Do not add speculative features, one-off abstractions, unrequested configurability, or defensive handling for impossible states.
+- Surgical changes: touch only files and lines required by the task. Match existing style even when a different style is tempting. Clean up unused code created by your own changes, but only mention unrelated dead code instead of deleting it.
+- Goal-driven execution: translate work into explicit success criteria and verification steps. For bugs, prefer a reproducing test before the fix. For refactors, verify behavior before and after. For multi-step tasks, keep a short plan where each step has a check.
+- Diff discipline: every changed line should trace directly to the user's request, a requirement document update, or a verification-driven cleanup caused by the change.
+- Tradeoff: these principles bias toward caution for non-trivial work. For obvious one-line fixes, use judgment and keep the process lightweight.
+
 ## Build, Test, and Development Commands
 
 No project-level `package.json`, Makefile, or test runner is checked in yet. For the current prototype:
