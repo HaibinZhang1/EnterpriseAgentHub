@@ -5,8 +5,11 @@ import type {
   PackageDownloadTicketRow,
   PackageRow,
   RequesterScope,
+  SkillLeaderboardQueryPlan,
+  SkillLeaderboardRow,
   SkillListQueryPlan,
   SkillRow,
+  SkillVersionRow,
 } from './skills.types';
 
 @Injectable()
@@ -15,6 +18,11 @@ export class SkillsRepository {
 
   async listSkills(plan: SkillListQueryPlan): Promise<ListedSkillRow[]> {
     const result = await this.database.query<ListedSkillRow>(plan.text, plan.values);
+    return result.rows;
+  }
+
+  async listSkillLeaderboards(plan: SkillLeaderboardQueryPlan): Promise<SkillLeaderboardRow[]> {
+    const result = await this.database.query<SkillLeaderboardRow>(plan.text, plan.values);
     return result.rows;
   }
 
@@ -49,6 +57,19 @@ export class SkillsRepository {
       `,
       [skillID, version],
     );
+  }
+
+  async listSkillVersions(skillRowID: string): Promise<SkillVersionRow[]> {
+    const result = await this.database.query<SkillVersionRow>(
+      `
+      SELECT version, changelog, risk_level, published_at
+      FROM skill_versions
+      WHERE skill_id = $1
+      ORDER BY published_at DESC, version DESC
+      `,
+      [skillRowID],
+    );
+    return result.rows;
   }
 
   async loadPackageRow(packageRef: string): Promise<PackageRow | null> {
@@ -106,6 +127,28 @@ export class SkillsRepository {
     );
   }
 
+  async recordDownloadEvent(input: {
+    userID: string;
+    skillRowID: string;
+    version: string;
+    purpose: 'install' | 'update';
+  }): Promise<void> {
+    await this.database.query(
+      `
+      INSERT INTO download_events (user_id, skill_id, version, purpose)
+      SELECT $1, $2, $3, $4
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM download_events
+        WHERE user_id = $1
+          AND skill_id = $2
+          AND purpose = $4
+      )
+      `,
+      [input.userID, input.skillRowID, input.version, input.purpose],
+    );
+  }
+
   async findPackageDownloadTicket(packageRef: string, ticket: string): Promise<PackageDownloadTicketRow | null> {
     return this.database.one<PackageDownloadTicketRow>(
       `
@@ -153,7 +196,7 @@ export class SkillsRepository {
         v.risk_description,
         v.review_summary,
         v.published_at,
-        u.display_name AS author_name,
+        u.username AS author_name,
         d.name AS author_department,
         COALESCE(array_agg(DISTINCT st.tag) FILTER (WHERE st.tag IS NOT NULL), '{}') AS tags,
         COALESCE(array_agg(DISTINCT tc.tool_id) FILTER (WHERE tc.tool_id IS NOT NULL), '{}') AS compatible_tools,
@@ -182,7 +225,7 @@ export class SkillsRepository {
         LIMIT 1
       ) auth ON true
       ${skillID ? 'WHERE s.skill_id = $1' : ''}
-      GROUP BY s.id, v.id, u.display_name, d.name, auth.scope_type, auth.scope_department_ids, auth.scope_department_paths
+      GROUP BY s.id, v.id, u.username, d.name, auth.scope_type, auth.scope_department_ids, auth.scope_department_paths
       ORDER BY s.updated_at DESC
       `,
       values,

@@ -25,7 +25,7 @@ export async function markLocalNotificationsRead(notificationIDs: string[] | "al
   const invoke = getInvoke();
   if (invoke) {
     await invoke(P1_LOCAL_COMMANDS.markLocalNotificationsRead, {
-      notificationIDs: notificationIDs === "all" ? [] : notificationIDs,
+      notificationIds: notificationIDs === "all" ? [] : notificationIDs,
       all: notificationIDs === "all"
     });
     return;
@@ -42,8 +42,8 @@ export async function markLocalNotificationsRead(notificationIDs: string[] | "al
 export async function markOfflineEventsSynced(eventIDs: string[]): Promise<string[]> {
   const invoke = getInvoke();
   if (invoke) {
-    const result = await invoke<{ syncedEventIDs: string[] }>(P1_LOCAL_COMMANDS.markOfflineEventsSynced, { eventIDs });
-    return result.syncedEventIDs;
+    const result = await invoke<{ syncedEventIDs?: string[]; syncedEventIds?: string[] }>(P1_LOCAL_COMMANDS.markOfflineEventsSynced, { eventIds: eventIDs });
+    return result.syncedEventIDs ?? result.syncedEventIds ?? [];
   }
   if (isBrowserPreviewMode()) {
     throw pendingLocalCommand("mark_offline_events_synced");

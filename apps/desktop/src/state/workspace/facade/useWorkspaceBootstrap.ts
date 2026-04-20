@@ -14,6 +14,8 @@ export async function moveWorkspaceToGuest(input: {
   refreshLocalBootstrap: () => Promise<LocalBootstrap>;
   setAuthState: (state: "guest") => void;
   setBootstrap: (value: ReturnType<typeof buildGuestBootstrap>) => void;
+  setLeaderboards?: (value: null) => void;
+  setLeaderboardsLoading?: (value: false) => void;
   setSkills: (skills: SkillSummary[] | ((current: SkillSummary[]) => SkillSummary[])) => void;
   setOfflineEvents: (events: LocalBootstrap["offlineEvents"]) => void;
   setScanTargets: (targets: Awaited<ReturnType<typeof desktopBridge.scanLocalTargets>>) => void;
@@ -28,6 +30,8 @@ export async function moveWorkspaceToGuest(input: {
   const localSkills = localBootstrap.installs.map(localSummaryFromInstall);
   input.setAuthState("guest");
   input.setBootstrap(buildGuestBootstrap(localBootstrap, input.message));
+  input.setLeaderboards?.(null);
+  input.setLeaderboardsLoading?.(false);
   input.setSkills(localSkills);
   input.setOfflineEvents(localBootstrap.offlineEvents);
   input.setScanTargets(localScanTargets);

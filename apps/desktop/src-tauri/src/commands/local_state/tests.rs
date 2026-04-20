@@ -157,6 +157,7 @@ fn persists_projects_disables_targets_and_uninstalls_through_sqlite() {
     let bootstrap = state.get_local_bootstrap().expect("bootstrap");
     assert_eq!(bootstrap.projects.len(), 1);
     assert_eq!(bootstrap.projects[0].enabled_skill_count, 1);
+    assert_eq!(bootstrap.projects[0].project_path_status, "valid");
     assert_eq!(bootstrap.pending_offline_event_count, 2);
     assert_eq!(bootstrap.offline_events.len(), 2);
     assert!(Path::new(&project_target.target_path)
@@ -378,6 +379,39 @@ fn derives_macos_project_suffix_when_skills_path_is_empty() {
 }
 
 #[test]
+fn reports_project_path_status_in_bootstrap() {
+    let _lock = ENV_LOCK.lock().expect("lock env");
+    let temp = TestTemp::new("local-state-project-path-status");
+    let state = P1LocalState::initialize(temp.path.join("app-data")).expect("init state");
+    let missing_project_path = temp.path.join("missing-project");
+    let skills_path = temp.path.join("skills-target");
+
+    state
+        .save_project_config(ProjectConfigInputPayload {
+            project_id: Some("missing-project".to_string()),
+            name: "Missing Project".to_string(),
+            project_path: missing_project_path.to_string_lossy().to_string(),
+            skills_path: skills_path.to_string_lossy().to_string(),
+            enabled: Some(true),
+        })
+        .expect("save project with missing root");
+
+    let bootstrap = state.get_local_bootstrap().expect("bootstrap");
+    let project = bootstrap
+        .projects
+        .iter()
+        .find(|project| project.project_id == "missing-project")
+        .expect("missing project config");
+
+    assert_eq!(project.project_path_status, "missing");
+    assert!(project
+        .project_path_status_reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("不存在"));
+}
+
+#[test]
 fn custom_directory_requires_manual_path_before_enable() {
     let _lock = ENV_LOCK.lock().expect("lock env");
     let temp = TestTemp::new("local-state-custom-directory");
@@ -480,6 +514,135 @@ fn scans_local_targets_and_requires_explicit_overwrite() {
 }
 
 #[test]
+fn imports_unmanaged_skill_into_central_store_and_claims_matching_sources() {
+    let _lock = ENV_LOCK.lock().expect("lock env");
+    let temp = TestTemp::new("local-state-import");
+    let state = P1LocalState::initialize(temp.path.join("app-data")).expect("init state");
+    let tool_root = temp.path.join("codex-skills");
+    let project_root = temp.path.join("EnterpriseAgentHub");
+    let project_skills = project_root.join(".codex/skills");
+
+    state
+        .save_tool_config(ToolConfigInputPayload {
+            tool_id: "codex".to_string(),
+            name: None,
+            config_path: "".to_string(),
+            skills_path: tool_root.to_string_lossy().to_string(),
+            enabled: Some(true),
+        })
+        .expect("save codex tool config");
+    state
+        .save_project_config(ProjectConfigInputPayload {
+            project_id: Some("enterprise-agent-hub".to_string()),
+            name: "Enterprise Agent Hub".to_string(),
+            project_path: project_root.to_string_lossy().to_string(),
+            skills_path: project_skills.to_string_lossy().to_string(),
+            enabled: Some(true),
+        })
+        .expect("save project config");
+
+    write_skill_dir(
+        &tool_root.join("local-helper"),
+        "local-helper",
+        "Local Helper",
+        "1.1.0",
+    );
+    write_skill_dir(
+        &project_skills.join("local-helper"),
+        "local-helper",
+        "Local Helper",
+        "1.1.0",
+    );
+    write_skill_dir(
+        &project_skills.join("local-helper-different"),
+        "local-helper",
+        "Local Helper",
+        "2.0.0",
+    );
+
+    let scan = state.scan_local_targets().expect("scan before import");
+    let importable = scan
+        .iter()
+        .flat_map(|summary| summary.findings.iter())
+        .find(|finding| finding.relative_path == "local-helper" && finding.target_type == "tool")
+        .expect("importable finding");
+    assert!(importable.can_import);
+    assert_eq!(importable.skill_id.as_deref(), Some("local-helper"));
+    assert_eq!(importable.import_version.as_deref(), Some("1.1.0"));
+
+    let imported = state
+        .import_local_skill(ImportLocalSkillPayload {
+            target_type: "tool".to_string(),
+            target_id: "codex".to_string(),
+            relative_path: "local-helper".to_string(),
+            skill_id: "local-helper".to_string(),
+            conflict_strategy: "rename".to_string(),
+        })
+        .expect("import local skill");
+
+    assert_eq!(imported.skill_id, "local-helper");
+    assert_eq!(imported.display_name, "local-helper");
+    assert_eq!(imported.local_version, "1.1.0");
+    assert_eq!(imported.source_type, "local_import");
+    assert!(!imported.can_update);
+    assert!(Path::new(&imported.central_store_path)
+        .join("SKILL.md")
+        .is_file());
+    assert_eq!(imported.enabled_targets.len(), 2);
+    assert!(imported
+        .enabled_targets
+        .iter()
+        .any(|target| target.target_type == "tool" && target.target_id == "codex"));
+    assert!(imported.enabled_targets.iter().any(|target| {
+        target.target_type == "project" && target.target_id == "enterprise-agent-hub"
+    }));
+
+    let bootstrap = state.get_local_bootstrap().expect("bootstrap after import");
+    assert!(bootstrap.offline_events.is_empty());
+    assert_eq!(bootstrap.pending_offline_event_count, 0);
+}
+
+#[test]
+fn import_local_skill_rejects_missing_manifest_and_path_traversal() {
+    let _lock = ENV_LOCK.lock().expect("lock env");
+    let temp = TestTemp::new("local-state-import-reject");
+    let state = P1LocalState::initialize(temp.path.join("app-data")).expect("init state");
+    let tool_root = temp.path.join("codex-skills");
+    state
+        .save_tool_config(ToolConfigInputPayload {
+            tool_id: "codex".to_string(),
+            name: None,
+            config_path: "".to_string(),
+            skills_path: tool_root.to_string_lossy().to_string(),
+            enabled: Some(true),
+        })
+        .expect("save codex tool config");
+    fs::create_dir_all(tool_root.join("not-a-skill")).expect("create non skill dir");
+
+    let missing_manifest = state
+        .import_local_skill(ImportLocalSkillPayload {
+            target_type: "tool".to_string(),
+            target_id: "codex".to_string(),
+            relative_path: "not-a-skill".to_string(),
+            skill_id: "not-a-skill".to_string(),
+            conflict_strategy: "rename".to_string(),
+        })
+        .expect_err("missing SKILL.md should fail");
+    assert!(missing_manifest.contains("SKILL.md"));
+
+    let traversal = state
+        .import_local_skill(ImportLocalSkillPayload {
+            target_type: "tool".to_string(),
+            target_id: "codex".to_string(),
+            relative_path: "../outside".to_string(),
+            skill_id: "outside".to_string(),
+            conflict_strategy: "rename".to_string(),
+        })
+        .expect_err("traversal should fail");
+    assert!(traversal.contains("relativePath"));
+}
+
+#[test]
 fn caches_local_notifications_and_marks_them_read() {
     let _lock = ENV_LOCK.lock().expect("lock env");
     let temp = TestTemp::new("local-state-notifications");
@@ -557,6 +720,18 @@ fn serve_once(body: Vec<u8>) -> String {
         stream.write_all(&body).expect("write response body");
     });
     format!("http://{addr}/package.zip")
+}
+
+fn write_skill_dir(path: &Path, name: &str, description: &str, version: &str) {
+    fs::create_dir_all(path.join("assets")).expect("create skill dir");
+    fs::write(
+        path.join("SKILL.md"),
+        format!(
+            "---\nname: {name}\ndescription: {description}\nversion: {version}\n---\n\n# {description}\n\n本地导入测试。\n"
+        ),
+    )
+    .expect("write SKILL.md");
+    fs::write(path.join("assets/example.txt"), "asset").expect("write asset");
 }
 
 struct TestTemp {

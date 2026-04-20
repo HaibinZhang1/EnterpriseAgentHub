@@ -36,7 +36,7 @@ export class PackageDownloadController {
     }
     try {
       const session = await this.authService.authenticateAccessToken(token.slice('p1-session:'.length));
-      return session.user.userID;
+      return session.userID;
     } catch {
       return null;
     }

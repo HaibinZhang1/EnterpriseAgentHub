@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection};
@@ -146,6 +147,33 @@ pub(super) fn validate_target_path(path: String) -> Result<ValidateTargetPathPay
     }
 }
 
+pub(super) fn derive_project_path_status(project_path: &str) -> (String, Option<String>) {
+    let trimmed = project_path.trim();
+    if trimmed.is_empty() {
+        return (
+            "invalid".to_string(),
+            Some("项目路径不能为空。".to_string()),
+        );
+    }
+
+    match fs::metadata(trimmed) {
+        Ok(metadata) if !metadata.is_dir() => (
+            "invalid".to_string(),
+            Some("项目路径存在，但不是文件夹。".to_string()),
+        ),
+        Ok(metadata) if metadata.permissions().readonly() => (
+            "unwritable".to_string(),
+            Some("项目路径存在，但当前用户不可写。".to_string()),
+        ),
+        Ok(_) => ("valid".to_string(), None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (
+            "missing".to_string(),
+            Some("项目路径不存在，请确认是否已移动或删除。".to_string()),
+        ),
+        Err(error) => ("invalid".to_string(), Some(error.to_string())),
+    }
+}
+
 pub(super) fn detect_tools_from_conn(
     conn: &Connection,
 ) -> rusqlite::Result<Vec<ToolConfigPayload>> {
@@ -167,12 +195,17 @@ pub(super) fn list_project_configs_from_conn(
     )?;
     let rows = statement.query_map([], |row| {
         let project_id: String = row.get(0)?;
+        let project_path: String = row.get(2)?;
+        let (project_path_status, project_path_status_reason) =
+            derive_project_path_status(&project_path);
         Ok(ProjectConfigPayload {
             project_id: project_id.clone(),
             name: row.get(1)?,
             display_name: row.get(1)?,
-            project_path: row.get(2)?,
+            project_path,
             skills_path: row.get(3)?,
+            project_path_status,
+            project_path_status_reason,
             enabled: int_to_bool(row.get(4)?),
             enabled_skill_count: count_enabled_targets_for_project(conn, &project_id)?,
             created_at: row.get(5)?,
@@ -195,12 +228,17 @@ pub(super) fn load_project_config(
         [project_id],
         |row| {
             let project_id: String = row.get(0)?;
+            let project_path: String = row.get(2)?;
+            let (project_path_status, project_path_status_reason) =
+                derive_project_path_status(&project_path);
             Ok(ProjectConfigPayload {
                 project_id: project_id.clone(),
                 name: row.get(1)?,
                 display_name: row.get(1)?,
-                project_path: row.get(2)?,
+                project_path,
                 skills_path: row.get(3)?,
+                project_path_status,
+                project_path_status_reason,
                 enabled: int_to_bool(row.get(4)?),
                 enabled_skill_count: count_enabled_targets_for_project(conn, &project_id)?,
                 created_at: row.get(5)?,

@@ -90,6 +90,8 @@ export function useP1Workspace() {
     refreshLocalBootstrap: localSync.refreshLocalBootstrap,
     refreshLocalScans: localSync.refreshLocalScans,
     requireAuthenticatedAction: sessionFlow.requireAuthenticatedAction,
+    setLeaderboards: market.setLeaderboards,
+    setLeaderboardsLoading: market.setLeaderboardsLoading,
     setOfflineEvents: localSync.setOfflineEvents,
     setSkills: market.setSkills,
     skills: market.skills,
@@ -105,7 +107,8 @@ export function useP1Workspace() {
     refreshLocalScans: localSync.refreshLocalScans,
     setNotifications: localSync.setNotifications,
     setProjects: localSync.setProjects,
-    setTools: localSync.setTools
+    setTools: localSync.setTools,
+    updateSkillProgress: market.updateSkillProgress
   });
 
   const publisherActions = useWorkspacePublisherActions({
@@ -165,6 +168,8 @@ export function useP1Workspace() {
     openPage,
     visibleNavigation: derived.visibleNavigation,
     skills: market.skills,
+    leaderboards: market.leaderboards,
+    leaderboardsLoading: market.leaderboardsLoading,
     marketSkills: derived.marketSkills,
     installedSkills: derived.installedSkills,
     discoveredLocalSkills: derived.discoveredLocalSkills,
@@ -183,6 +188,7 @@ export function useP1Workspace() {
     departments: derived.departmentsFilter,
     compatibleTools: derived.compatibleTools,
     categories: derived.categories,
+    tags: derived.tags,
     progress: market.progress,
     clearProgress: market.clearProgress,
     authError: auth.authError,
@@ -190,6 +196,7 @@ export function useP1Workspace() {
     logout: sessionFlow.logout,
     refreshBootstrap: sessionFlow.refreshBootstrap,
     installOrUpdate: marketActions.installOrUpdate,
+    importLocalSkill: marketActions.importLocalSkill,
     enableSkill: marketActions.enableSkill,
     disableSkill: marketActions.disableSkill,
     uninstallSkill: marketActions.uninstallSkill,

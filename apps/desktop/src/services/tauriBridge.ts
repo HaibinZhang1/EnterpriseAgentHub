@@ -1,7 +1,7 @@
 import type { DownloadTicket, EnabledTarget, LocalBootstrap, LocalEvent, LocalNotification, LocalSkillInstall, ProjectConfig, ProjectDirectorySelection, RequestedMode, ScanTargetSummary, SkillSummary, TargetType, ToolConfig, ValidateTargetPathResult } from "../domain/p1.ts";
 import { getLocalBootstrap, listLocalInstalls } from "./tauriBridge/bootstrap.ts";
 import { saveProjectConfig, saveToolConfig, pickProjectDirectory } from "./tauriBridge/configOps.ts";
-import { disableSkill, enableSkill, installSkillPackage, uninstallSkill, updateSkillPackage } from "./tauriBridge/packageOps.ts";
+import { disableSkill, enableSkill, importLocalSkill, installSkillPackage, uninstallSkill, updateSkillPackage } from "./tauriBridge/packageOps.ts";
 import { markLocalNotificationsRead, markOfflineEventsSynced, upsertLocalNotifications } from "./tauriBridge/notificationOps.ts";
 import { refreshToolDetection, scanLocalTargets, validateTargetPath } from "./tauriBridge/scanOps.ts";
 
@@ -9,6 +9,7 @@ export interface DesktopBridge {
   getLocalBootstrap(): Promise<LocalBootstrap>;
   installSkillPackage(downloadTicket: DownloadTicket): Promise<LocalSkillInstall>;
   updateSkillPackage(downloadTicket: DownloadTicket): Promise<LocalSkillInstall>;
+  importLocalSkill(input: { targetType: TargetType; targetID: string; relativePath: string; skillID: string; conflictStrategy: "rename" | "replace" }): Promise<LocalSkillInstall>;
   saveToolConfig(tool: { toolID: string; name?: string; configPath: string; skillsPath: string; enabled?: boolean }): Promise<ToolConfig>;
   saveProjectConfig(project: { projectID?: string; name: string; projectPath: string; skillsPath: string; enabled?: boolean }): Promise<ProjectConfig>;
   uninstallSkill(skillID: string): Promise<{ removedTargetIDs: string[]; failedTargetIDs: string[]; event: LocalEvent }>;
@@ -28,6 +29,7 @@ export const desktopBridge: DesktopBridge = {
   getLocalBootstrap,
   installSkillPackage,
   updateSkillPackage,
+  importLocalSkill,
   saveToolConfig,
   saveProjectConfig,
   uninstallSkill,

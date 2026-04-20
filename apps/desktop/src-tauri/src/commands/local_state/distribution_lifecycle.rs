@@ -79,23 +79,25 @@ pub(super) fn enable_skill(
         params![timestamp, skill_id],
     )
     .map_err(|error| error.to_string())?;
-    insert_offline_event(
-        &conn,
-        build_local_event_payload(
-            "enable_result",
-            &skill_id,
-            &install.local_version,
-            &target.target_type,
-            &target.target_id,
-            &target.target_path,
-            &target.requested_mode,
-            &target.resolved_mode,
-            target.fallback_reason.clone(),
-            target.enabled_at.clone(),
-            "success",
-        ),
-    )
-    .map_err(|error| error.to_string())?;
+    if install.source_type != "local_import" {
+        insert_offline_event(
+            &conn,
+            build_local_event_payload(
+                "enable_result",
+                &skill_id,
+                &install.local_version,
+                &target.target_type,
+                &target.target_id,
+                &target.target_path,
+                &target.requested_mode,
+                &target.resolved_mode,
+                target.fallback_reason.clone(),
+                target.enabled_at.clone(),
+                "success",
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+    }
 
     Ok(target)
 }
@@ -137,7 +139,9 @@ pub(super) fn disable_skill(
         updated_at,
         "success",
     );
-    insert_offline_event(&conn, event.clone()).map_err(|error| error.to_string())?;
+    if install.source_type != "local_import" {
+        insert_offline_event(&conn, event.clone()).map_err(|error| error.to_string())?;
+    }
 
     Ok(DisableSkillPayload { event })
 }

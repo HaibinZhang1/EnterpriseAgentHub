@@ -110,6 +110,7 @@ export function seedLocalInstalls(): LocalSkillInstall[] {
       localVersion: skill.localVersion ?? skill.version,
       localHash: skill.localVersion ? `sha256:local-${skill.skillID}` : skill.version,
       sourcePackageHash: `sha256:source-${skill.skillID}`,
+      sourceType: "remote",
       installedAt: skill.lastEnabledAt ?? skill.publishedAt,
       updatedAt: skill.currentVersionUpdatedAt,
       localStatus: skill.enabledTargets.length > 0 ? "enabled" : "installed",
@@ -163,6 +164,7 @@ export function mockScanSummaries(): ScanTargetSummary[] {
           targetPath: appendSkillPath(codexSkillsPath, "context-router", platform),
           relativePath: "context-router",
           checksum: "mock-managed",
+          canImport: false,
           message: "目标内容与本地登记一致，处于托管状态。"
         },
         {
@@ -175,6 +177,7 @@ export function mockScanSummaries(): ScanTargetSummary[] {
           targetPath: appendSkillPath(codexSkillsPath, "manual-note", platform),
           relativePath: "manual-note",
           checksum: "mock-conflict",
+          canImport: false,
           message: "发现未托管目录，启用时不会在未确认前覆盖。"
         }
       ],
@@ -200,6 +203,7 @@ export function mockScanSummaries(): ScanTargetSummary[] {
           targetPath: appendSkillPath(projectSkillsPath, "context-router", platform),
           relativePath: "context-router",
           checksum: "mock-managed-project",
+          canImport: false,
           message: "目标内容与本地登记一致，处于托管状态。"
         }
       ],

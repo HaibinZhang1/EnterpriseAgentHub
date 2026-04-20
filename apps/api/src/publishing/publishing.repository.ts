@@ -22,7 +22,7 @@ export class PublishingRepository {
       `
       SELECT
         u.id AS user_id,
-        u.display_name,
+        u.username AS display_name,
         u.role,
         u.admin_level,
         u.department_id,
@@ -141,7 +141,7 @@ export class PublishingRepository {
         r.summary,
         r.description,
         r.review_summary,
-        current_reviewer.display_name AS current_reviewer_name,
+        current_reviewer.username AS current_reviewer_name,
         r.lock_owner_id,
         r.lock_expires_at,
         r.requested_version,
@@ -214,7 +214,7 @@ export class PublishingRepository {
       SELECT
         h.id AS history_id,
         h.action,
-        actor.display_name AS actor_name,
+        actor.username AS actor_name,
         h.comment,
         h.created_at
       FROM review_item_history h
@@ -259,7 +259,7 @@ function normalizePayload(value: unknown) {
     return {
       description: "",
       changelog: "",
-      category: "uncategorized",
+      category: "其他",
       tags: [],
       compatibleTools: [],
       compatibleSystems: []
@@ -269,7 +269,7 @@ function normalizePayload(value: unknown) {
   return {
     description: typeof payload.description === "string" ? payload.description : "",
     changelog: typeof payload.changelog === "string" ? payload.changelog : "",
-    category: typeof payload.category === "string" && payload.category ? payload.category : "uncategorized",
+    category: typeof payload.category === "string" && payload.category ? payload.category : "其他",
     tags: Array.isArray(payload.tags) ? payload.tags.map(String) : [],
     compatibleTools: Array.isArray(payload.compatibleTools) ? payload.compatibleTools.map(String) : [],
     compatibleSystems: Array.isArray(payload.compatibleSystems) ? payload.compatibleSystems.map(String) : [],

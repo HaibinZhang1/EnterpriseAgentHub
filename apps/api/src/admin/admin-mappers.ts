@@ -38,9 +38,8 @@ export function buildDepartmentTree(rows: DepartmentRow[]): DepartmentNodeDto[] 
 
 export function toAdminUser(row: UserRow): AdminUserDto {
   return {
-    userID: row.user_id,
     username: row.username,
-    displayName: row.display_name,
+    phoneNumber: row.phone_number,
     departmentID: row.department_id,
     departmentName: row.department_name,
     departmentPath: row.department_path,

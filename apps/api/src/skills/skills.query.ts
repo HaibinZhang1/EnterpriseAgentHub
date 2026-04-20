@@ -1,4 +1,4 @@
-import type { RequesterScope, SkillListQuery, SkillListQueryPlan } from "./skills.types";
+import type { RequesterScope, SkillLeaderboardQueryPlan, SkillListQuery, SkillListQueryPlan } from "./skills.types";
 
 export interface SkillListQueryOptions {
   requester?: RequesterScope;
@@ -20,6 +20,7 @@ export function buildSkillListQueryPlan(query: SkillListQuery, options: SkillLis
   const values: unknown[] = [];
   const conditions: string[] = [];
   const searchTerm = query.q?.trim();
+  const requestedTags = parseTagsQuery(query.tags);
 
   const push = (value: unknown): string => {
     values.push(value);
@@ -56,6 +57,16 @@ export function buildSkillListQueryPlan(query: SkillListQuery, options: SkillLis
     conditions.push(`s.category = ${push(query.category)}`);
   }
 
+  if (requestedTags.length > 0) {
+    conditions.push(
+      `EXISTS (
+        SELECT 1
+        FROM skill_tags st_filter
+        WHERE st_filter.skill_id = s.id AND st_filter.tag = ANY(${push(requestedTags)}::text[])
+      )`
+    );
+  }
+
   if (query.riskLevel) {
     conditions.push(`v.risk_level = ${push(query.riskLevel)}`);
   }
@@ -90,8 +101,9 @@ export function buildSkillListQueryPlan(query: SkillListQuery, options: SkillLis
         GROUP BY skill_id
       ),
       download_counts AS (
-        SELECT skill_id, count(*)::bigint AS download_count
+        SELECT skill_id, count(DISTINCT user_id)::bigint AS download_count
         FROM download_events
+        WHERE purpose = 'install'
         GROUP BY skill_id
       ),
       base AS (
@@ -109,7 +121,7 @@ export function buildSkillListQueryPlan(query: SkillListQuery, options: SkillLis
           v.risk_description,
           v.review_summary,
           v.published_at,
-          u.display_name AS author_name,
+          u.username AS author_name,
           d.name AS author_department,
           COALESCE(array_agg(DISTINCT st.tag) FILTER (WHERE st.tag IS NOT NULL), '{}') AS tags,
           COALESCE(array_agg(DISTINCT tc.tool_id) FILTER (WHERE tc.tool_id IS NOT NULL), '{}') AS compatible_tools,
@@ -146,7 +158,7 @@ export function buildSkillListQueryPlan(query: SkillListQuery, options: SkillLis
         GROUP BY
           s.id,
           v.id,
-          u.display_name,
+          u.username,
           d.name,
           auth.scope_type,
           auth.scope_department_ids,
@@ -187,6 +199,119 @@ export function buildSkillListQueryPlan(query: SkillListQuery, options: SkillLis
       OFFSET ${offsetParam}
     `
   };
+}
+
+export function buildSkillLeaderboardQueryPlan(windowDays = 7): SkillLeaderboardQueryPlan {
+  return {
+    values: [windowDays],
+    text: `
+      WITH star_counts AS (
+        SELECT skill_id, count(*)::bigint AS star_count
+        FROM skill_stars
+        GROUP BY skill_id
+      ),
+      download_counts AS (
+        SELECT skill_id, count(DISTINCT user_id)::bigint AS download_count
+        FROM download_events
+        WHERE purpose = 'install'
+        GROUP BY skill_id
+      ),
+      recent_star_counts AS (
+        SELECT skill_id, count(*)::bigint AS recent_star_count
+        FROM skill_stars
+        WHERE created_at >= now() - ($1::int * INTERVAL '1 day')
+        GROUP BY skill_id
+      ),
+      recent_download_counts AS (
+        SELECT skill_id, count(DISTINCT user_id)::bigint AS recent_download_count
+        FROM download_events
+        WHERE purpose = 'install'
+          AND created_at >= now() - ($1::int * INTERVAL '1 day')
+        GROUP BY skill_id
+      )
+      SELECT
+        s.id,
+        s.skill_id,
+        s.display_name,
+        s.description,
+        s.status,
+        s.visibility_level,
+        s.category,
+        s.updated_at,
+        v.version,
+        v.risk_level,
+        v.risk_description,
+        v.review_summary,
+        v.published_at,
+        u.username AS author_name,
+        d.name AS author_department,
+        COALESCE(array_agg(DISTINCT st.tag) FILTER (WHERE st.tag IS NOT NULL), '{}') AS tags,
+        COALESCE(array_agg(DISTINCT tc.tool_id) FILTER (WHERE tc.tool_id IS NOT NULL), '{}') AS compatible_tools,
+        COALESCE(array_agg(DISTINCT tc.system) FILTER (WHERE tc.system IS NOT NULL), '{}') AS compatible_systems,
+        auth.scope_type,
+        auth.scope_department_ids,
+        auth.scope_department_paths,
+        COALESCE(stars.star_count, 0)::text AS star_count,
+        COALESCE(downloads.download_count, 0)::text AS download_count,
+        COALESCE(recent_stars.recent_star_count, 0)::text AS recent_star_count,
+        COALESCE(recent_downloads.recent_download_count, 0)::text AS recent_download_count,
+        (
+          (
+            COALESCE(recent_downloads.recent_download_count, 0) * 6
+            + COALESCE(recent_stars.recent_star_count, 0) * 3
+            + CASE WHEN s.updated_at >= now() - ($1::int * INTERVAL '1 day') THEN 2 ELSE 0 END
+          )
+          * CASE
+              WHEN COALESCE(v.risk_level, 'unknown') = 'high' THEN 0.5
+              WHEN COALESCE(v.risk_level, 'unknown') = 'medium' THEN 0.8
+              ELSE 1.0
+            END
+        )::text AS hot_score
+      FROM skills s
+      JOIN skill_versions v ON v.id = s.current_version_id
+      LEFT JOIN users u ON u.id = s.author_id
+      LEFT JOIN departments d ON d.id = s.department_id
+      LEFT JOIN skill_tags st ON st.skill_id = s.id
+      LEFT JOIN skill_tool_compatibilities tc ON tc.skill_id = s.id
+      LEFT JOIN LATERAL (
+        SELECT
+          sa.scope_type,
+          array_remove(array_agg(sa.department_id ORDER BY sa.department_id), NULL) AS scope_department_ids,
+          array_remove(array_agg(scope_department.path ORDER BY scope_department.path), NULL) AS scope_department_paths
+        FROM skill_authorizations sa
+        LEFT JOIN departments scope_department ON scope_department.id = sa.department_id
+        WHERE sa.skill_id = s.id
+        GROUP BY sa.scope_type
+        ORDER BY count(*) DESC, sa.scope_type ASC
+        LIMIT 1
+      ) auth ON true
+      LEFT JOIN star_counts stars ON stars.skill_id = s.id
+      LEFT JOIN download_counts downloads ON downloads.skill_id = s.id
+      LEFT JOIN recent_star_counts recent_stars ON recent_stars.skill_id = s.id
+      LEFT JOIN recent_download_counts recent_downloads ON recent_downloads.skill_id = s.id
+      WHERE s.status = 'published'
+        AND s.visibility_level <> 'private'
+      GROUP BY
+        s.id,
+        v.id,
+        u.username,
+        d.name,
+        auth.scope_type,
+        auth.scope_department_ids,
+        auth.scope_department_paths,
+        stars.star_count,
+        downloads.download_count,
+        recent_stars.recent_star_count,
+        recent_downloads.recent_download_count
+    `
+  };
+}
+
+function parseTagsQuery(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
 }
 
 function buildRequesterVisibilityCondition(

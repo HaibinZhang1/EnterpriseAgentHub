@@ -35,7 +35,9 @@ test('real admin workbench contracts expose the approved DTO increments', () => 
   const skill = interfaceBody(sharedContracts, 'AdminSkill');
 
   assert.match(department, /readonly adminCount:\s*number;/);
+  assert.doesNotMatch(user, /readonly userID:/);
   assert.match(user, /readonly departmentPath:\s*string;/);
+  assert.match(user, /readonly phoneNumber:\s*string;/);
   assert.match(user, /readonly lastLoginAt:\s*ISODateTimeString\s*\|\s*null;/);
   assert.match(skill, /readonly description:\s*string;/);
   assert.match(skill, /readonly category:\s*string\s*\|\s*null;/);
@@ -78,7 +80,7 @@ test('real admin workbench write paths preserve existing governance safeguards',
   assert.match(adminWriteService, /createUser[\s\S]*assertAssignableRole/);
   assert.match(adminWriteService, /updateUser[\s\S]*assertManagedUser/);
   assert.match(adminWriteService, /freezeUser[\s\S]*revokeAllSessionsForUser/);
-  assert.match(adminWriteService, /deleteUser[\s\S]*setUserStatus\(targetUserID, 'deleted'\)[\s\S]*revokeAllSessionsForUser/);
+  assert.match(adminWriteService, /deleteUser[\s\S]*loadManagedUserByPhoneNumber[\s\S]*setUserStatus\(target\.user_id, 'deleted'\)[\s\S]*revokeAllSessionsForUser/);
   assert.match(adminWriteService, /setSkillStatus[\s\S]*assertSkillStatusPermission[\s\S]*assertSkillStatusTransition/);
   assert.match(skillStatus, /nextStatus === 'published' && currentStatus !== 'delisted'/);
   assert.match(skillStatus, /nextStatus === 'delisted' && currentStatus !== 'published'/);
@@ -87,13 +89,15 @@ test('real admin workbench write paths preserve existing governance safeguards',
 
 test('real admin skills pane uses a list plus enriched right-side summary backed by AdminSkill', () => {
   const pane = functionBody(desktopSections, 'ManageSkillsPane');
+  const adminSkillHelper = functionBody(desktopSections, 'adminSkillView');
 
   assert.match(pane, /manage-pane-grid/);
   assert.match(pane, /selectedSkill/);
-  assert.match(pane, /getAdminSkillDescription\(selectedSkill\)/);
-  assert.match(pane, /getAdminSkillCategory\(selectedSkill\)/);
-  assert.match(pane, /getAdminSkillRiskLevel\(selectedSkill\)/);
-  assert.match(pane, /getAdminSkillReviewSummary\(selectedSkill\)/);
+  assert.match(pane, /adminSkillView\(selectedSkill/);
+  assert.match(pane, /getAdminSkillDescription\(skill\)/);
+  assert.match(pane, /getAdminSkillCategory\(skill\)/);
+  assert.match(adminSkillHelper, /getAdminSkillRiskLevel\(skill\)/);
+  assert.match(adminSkillHelper, /getAdminSkillReviewSummary\(skill\)/);
   assert.match(pane, /delistAdminSkill\(selectedSkill\.skillID\)/);
   assert.match(pane, /relistAdminSkill\(selectedSkill\.skillID\)/);
   assert.match(pane, /archiveAdminSkill\(selectedSkill\.skillID\)/);
@@ -109,10 +113,10 @@ test('real admin users pane separates searchable governance from create-user flo
   assert.match(pane, /getAdminUserDepartmentPath\(selectedUser\)/);
   assert.match(pane, /getAdminUserLastLoginAt\(selectedUser\)/);
   assert.match(pane, /createAdminUser/);
-  assert.match(pane, /updateAdminUser\(selectedUser\.userID/);
-  assert.match(pane, /freezeAdminUser\(selectedUser\.userID\)/);
-  assert.match(pane, /unfreezeAdminUser\(selectedUser\.userID\)/);
-  assert.match(pane, /deleteAdminUser\(selectedUser\.userID\)/);
+  assert.match(pane, /updateAdminUser\(selectedUser\.phoneNumber/);
+  assert.match(pane, /freezeAdminUser\(selectedUser\.phoneNumber\)/);
+  assert.match(pane, /unfreezeAdminUser\(selectedUser\.phoneNumber\)/);
+  assert.match(pane, /deleteAdminUser\(selectedUser\.phoneNumber\)/);
 });
 
 test('real admin departments pane makes the tree the primary surface and projects real datasets', () => {
@@ -122,10 +126,10 @@ test('real admin departments pane makes the tree the primary surface and project
   assert.match(pane, /hasChildren|childDepartments/);
   assert.doesNotMatch(pane, /flattenDepartments\(workspace\.adminData\.departments\)\.map\(\(department\)/);
   assert.match(pane, /selectedDepartment/);
-  assert.match(pane, /getDepartmentAdminCount\(selectedDepartment/);
+  assert.match(pane, /getDepartmentAdminCount\(row\.department/);
   assert.match(pane, /workspace\.adminData\.adminUsers/);
   assert.match(pane, /workspace\.adminData\.adminSkills/);
-  assert.match(pane, /createDepartment\(selectedDepartment\.departmentID/);
+  assert.match(pane, /createDepartment\(createParentDepartment\.departmentID/);
   assert.match(pane, /updateDepartment\(selectedDepartment\.departmentID/);
   assert.match(pane, /deleteDepartment\(selectedDepartment\.departmentID\)/);
 });

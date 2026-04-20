@@ -1,10 +1,11 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { REVIEW_LOCK_MS } from './publishing.service.constants';
 import { logInfo } from '../common/structured-log';
 import { DatabaseService } from '../database/database.service';
 import { PublishingRepository } from './publishing.repository';
 import { ReviewerRoutingService } from './reviewer-routing.service';
 import { PublishingPublicationService } from './publishing-publication.service';
+import { hasBlockingPrecheckFailures } from './publishing.utils';
 
 @Injectable()
 export class PublishingReviewService {
@@ -57,6 +58,9 @@ export class PublishingReviewService {
 
     if (!(await this.reviewerRouting.canActorReview(actor, review))) {
       throw new ForbiddenException('permission_denied');
+    }
+    if (hasBlockingPrecheckFailures(review.precheck_results)) {
+      throw new BadRequestException('validation_failed');
     }
 
     const autoApprove = await this.reviewerRouting.shouldAutoApprove(review);

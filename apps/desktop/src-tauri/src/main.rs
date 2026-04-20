@@ -1,8 +1,9 @@
 use enterprise_agent_hub_desktop::commands::local_state::{
-    DisableSkillPayload, DownloadTicketPayload, EnabledTargetPayload, LocalBootstrapPayload,
-    LocalNotificationPayload, LocalSkillInstallPayload, OfflineSyncAckPayload, P1LocalState,
-    ProjectConfigInputPayload, ProjectConfigPayload, ScanTargetSummaryPayload,
-    ToolConfigInputPayload, ToolConfigPayload, UninstallSkillPayload, ValidateTargetPathPayload,
+    DisableSkillPayload, DownloadTicketPayload, EnabledTargetPayload, ImportLocalSkillPayload,
+    LocalBootstrapPayload, LocalNotificationPayload, LocalSkillInstallPayload,
+    OfflineSyncAckPayload, P1LocalState, ProjectConfigInputPayload, ProjectConfigPayload,
+    ScanTargetSummaryPayload, ToolConfigInputPayload, ToolConfigPayload, UninstallSkillPayload,
+    ValidateTargetPathPayload,
 };
 use enterprise_agent_hub_desktop::commands::project_directory::{
     pick_project_directory as pick_project_directory_command, ProjectDirectorySelectionPayload,
@@ -45,6 +46,15 @@ fn update_skill_package(
     downloadTicket: DownloadTicketPayload,
 ) -> Result<LocalSkillInstallPayload, String> {
     state.update_skill_package(downloadTicket)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn import_local_skill(
+    state: State<'_, P1LocalState>,
+    input: ImportLocalSkillPayload,
+) -> Result<LocalSkillInstallPayload, String> {
+    state.import_local_skill(input)
 }
 
 #[allow(non_snake_case)]
@@ -169,6 +179,7 @@ fn main() {
             save_tool_config,
             install_skill_package,
             update_skill_package,
+            import_local_skill,
             save_project_config,
             uninstall_skill,
             enable_skill,

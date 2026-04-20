@@ -48,12 +48,20 @@ export interface ReviewDetailSource extends ReviewItemSource {
   current_package_size_bytes: number | null;
   staged_package_file_count: number | null;
   current_package_file_count: number | null;
+  submission_payload: {
+    description?: string;
+    changelog?: string;
+    category?: string;
+    tags?: string[];
+  };
 }
 
 export interface PublisherSubmissionSource extends ReviewDetailSource {
   submission_payload: {
     description?: string;
     changelog?: string;
+    category?: string;
+    tags?: string[];
   };
 }
 
@@ -74,6 +82,8 @@ export function buildPublisherSkillSummaries(
       skillID: row.skill_id,
       displayName: row.display_name,
       publishedSkillExists: true,
+      category: row.category ?? "其他",
+      tags: row.tags ?? [],
       currentVersion: row.version,
       currentStatus: row.status,
       currentVisibilityLevel: row.visibility_level,
@@ -102,6 +112,8 @@ export function buildPublisherSkillSummaries(
       skillID: row.skill_id,
       displayName: row.skill_display_name,
       publishedSkillExists: false,
+      category: row.submission_payload.category ?? "其他",
+      tags: row.submission_payload.tags ?? [],
       currentVersion: row.current_version,
       currentStatus: row.current_status,
       currentVisibilityLevel: row.current_visibility_level,
@@ -161,6 +173,8 @@ export function buildReviewDetailDto(
   return {
     ...mapReviewItem(review, actorUserID),
     description: review.description,
+    category: review.submission_payload.category || "其他",
+    tags: review.submission_payload.tags ?? [],
     reviewSummary: review.review_summary ?? undefined,
     currentVersion: review.current_version ?? undefined,
     currentVisibilityLevel: review.current_visibility_level ?? undefined,
@@ -196,6 +210,8 @@ export function buildPublisherSubmissionDetailDto(
     displayName: review.skill_display_name,
     description: payload.description || review.description,
     changelog: payload.changelog ?? "",
+    category: payload.category || "其他",
+    tags: payload.tags ?? [],
     version: review.requested_version ?? review.current_version ?? "",
     currentVersion: review.current_version ?? undefined,
     visibilityLevel: review.requested_visibility_level ?? review.current_visibility_level ?? "private",

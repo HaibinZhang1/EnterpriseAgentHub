@@ -25,6 +25,17 @@ function notificationKindLabel(kind: DesktopNotificationItem["kind"], ui: Deskto
   }
 }
 
+function notificationKindTone(kind: DesktopNotificationItem["kind"]) {
+  switch (kind) {
+    case "review_progress":
+      return "icon-tone-pine";
+    case "skill_update":
+      return "icon-tone-seafoam";
+    case "app_update":
+      return "icon-tone-steel";
+  }
+}
+
 export function NotificationListRow({
   notification,
   onSelect,
@@ -40,7 +51,7 @@ export function NotificationListRow({
       type="button"
       onClick={() => onSelect(notification)}
     >
-      <span className="notification-entry-icon">{notificationKindIcon(notification.kind)}</span>
+      <span className={`notification-entry-icon ${notificationKindTone(notification.kind)}`}>{notificationKindIcon(notification.kind)}</span>
       <span className="notification-entry-main">
         <span className="notification-entry-top">
           <strong>{notification.title}</strong>

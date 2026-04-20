@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use super::checksum::hash_path;
-use super::configuration::{load_tool_config_payload, refresh_builtin_tool_configs};
+use super::configuration::{
+    derive_project_path_status, load_tool_config_payload, refresh_builtin_tool_configs,
+};
 use super::pathing::{int_to_bool, normalize_path_text, now_iso, resolve_project_adapter};
 use super::persistence::{count_enabled_targets_for_project, load_enabled_targets_for_target};
 use super::{
@@ -21,7 +23,7 @@ pub(super) fn scan_local_targets(
     scan_local_targets_from_conn(&conn)
 }
 
-fn scan_local_targets_from_conn(
+pub(super) fn scan_local_targets_from_conn(
     conn: &Connection,
 ) -> Result<Vec<ScanTargetSummaryPayload>, String> {
     let scanned_at = now_iso();
@@ -125,6 +127,7 @@ fn scan_target_root(
                 &expected.target_path,
                 &relative_entry_name(&PathBuf::from(&expected.target_path), &root),
                 None,
+                None,
                 "登记的启用目标不存在，需要重新启用或清理。",
             ));
         }
@@ -139,6 +142,7 @@ fn scan_target_root(
         let normalized_entry_path = normalize_path_text(entry_path.to_string_lossy().as_ref());
         let checksum = hash_path(&entry_path).ok();
         let relative_path = relative_entry_name(&entry_path, &root);
+        let import_metadata = read_import_metadata(&entry_path, &relative_path);
         let expected = expected_by_path.remove(&normalized_entry_path);
         let has_managed_marker = entry_path.join(managed_marker_file).is_file();
         let (kind, skill_id, message) = match expected {
@@ -159,13 +163,21 @@ fn scan_target_root(
             }
             None if has_managed_marker => (
                 "orphan",
-                None,
+                import_metadata
+                    .as_ref()
+                    .map(|metadata| metadata.skill_id.clone()),
                 "发现带托管标记的目录，但本地启用登记不存在。".to_string(),
             ),
             None => (
                 "unmanaged",
-                None,
-                "发现未托管目录，启用时不会在未确认前覆盖。".to_string(),
+                import_metadata
+                    .as_ref()
+                    .map(|metadata| metadata.skill_id.clone()),
+                if import_metadata.is_some() {
+                    "发现未托管 Skill，可纳入 Central Store 管理。".to_string()
+                } else {
+                    "发现未托管目录，但根目录缺少 SKILL.md，仅在诊断中展示。".to_string()
+                },
             ),
         };
         findings.push(build_scan_finding(
@@ -177,6 +189,7 @@ fn scan_target_root(
             entry_path.to_string_lossy().as_ref(),
             &relative_path,
             checksum,
+            import_metadata,
             &message,
         ));
     }
@@ -190,6 +203,7 @@ fn scan_target_root(
             target_name,
             &expected.target_path,
             &relative_entry_name(&PathBuf::from(&expected.target_path), &root),
+            None,
             None,
             "登记的启用目标不存在，需要重新启用或清理。",
         ));
@@ -212,12 +226,17 @@ fn list_enabled_project_scan_targets(
     )?;
     let rows = statement.query_map([], |row| {
         let project_id: String = row.get(0)?;
+        let project_path: String = row.get(2)?;
+        let (project_path_status, project_path_status_reason) =
+            derive_project_path_status(&project_path);
         Ok(ProjectConfigPayload {
             project_id: project_id.clone(),
             name: row.get(1)?,
             display_name: row.get(1)?,
-            project_path: row.get(2)?,
+            project_path,
             skills_path: row.get(3)?,
+            project_path_status,
+            project_path_status_reason,
             enabled: int_to_bool(row.get(4)?),
             enabled_skill_count: count_enabled_targets_for_project(conn, &project_id)?,
             created_at: row.get(5)?,
@@ -255,6 +274,7 @@ fn build_scan_finding(
     target_path: &str,
     relative_path: &str,
     checksum: Option<String>,
+    import_metadata: Option<SkillImportMetadata>,
     message: &str,
 ) -> ScanFindingPayload {
     ScanFindingPayload {
@@ -267,8 +287,112 @@ fn build_scan_finding(
         target_path: target_path.to_string(),
         relative_path: relative_path.to_string(),
         checksum,
+        can_import: import_metadata.is_some() && kind == "unmanaged",
+        import_display_name: import_metadata
+            .as_ref()
+            .map(|metadata| metadata.display_name.clone()),
+        import_description: import_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.description.clone()),
+        import_version: import_metadata.map(|metadata| metadata.version),
         message: message.to_string(),
     }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SkillImportMetadata {
+    pub skill_id: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub version: String,
+}
+
+pub(super) fn read_import_metadata(
+    entry_path: &Path,
+    relative_path: &str,
+) -> Option<SkillImportMetadata> {
+    let skill_md = entry_path.join("SKILL.md");
+    if !skill_md.is_file() {
+        return None;
+    }
+    let text = fs::read_to_string(skill_md).ok()?;
+    let frontmatter = parse_frontmatter(&text);
+    let raw_name = frontmatter
+        .get("name")
+        .cloned()
+        .or_else(|| first_heading(&text))
+        .unwrap_or_else(|| relative_path.to_string());
+    let skill_id = sanitize_import_skill_id(
+        frontmatter
+            .get("name")
+            .map(String::as_str)
+            .unwrap_or(relative_path),
+    );
+    if skill_id.is_empty() {
+        return None;
+    }
+    Some(SkillImportMetadata {
+        skill_id,
+        display_name: raw_name,
+        description: frontmatter.get("description").cloned(),
+        version: frontmatter
+            .get("version")
+            .cloned()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "0.0.0-local".to_string()),
+    })
+}
+
+fn parse_frontmatter(text: &str) -> HashMap<String, String> {
+    let mut values = HashMap::new();
+    let mut lines = text.lines();
+    if lines.next().map(str::trim) != Some("---") {
+        return values;
+    }
+    for line in lines {
+        let line = line.trim();
+        if line == "---" {
+            break;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            values.insert(
+                key.trim().to_ascii_lowercase(),
+                value
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string(),
+            );
+        }
+    }
+    values
+}
+
+fn first_heading(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("# ")
+                .map(|value| value.trim().to_string())
+        })
+        .filter(|value| !value.is_empty())
+}
+
+pub(super) fn sanitize_import_skill_id(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
 }
 
 fn relative_entry_name(entry_path: &Path, target_root: &Path) -> String {

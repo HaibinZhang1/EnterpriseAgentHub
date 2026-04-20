@@ -5,11 +5,11 @@ use reqwest::blocking::Client;
 use rusqlite::{params, Connection};
 
 pub use crate::commands::local_state_types::{
-    DisableSkillPayload, DownloadTicketPayload, EnabledTargetPayload, LocalBootstrapPayload,
-    LocalEventPayload, LocalNotificationPayload, LocalSkillInstallPayload, OfflineSyncAckPayload,
-    ProjectConfigInputPayload, ProjectConfigPayload, ScanFindingCountsPayload, ScanFindingPayload,
-    ScanTargetSummaryPayload, ToolConfigInputPayload, ToolConfigPayload, UninstallSkillPayload,
-    ValidateTargetPathPayload,
+    DisableSkillPayload, DownloadTicketPayload, EnabledTargetPayload, ImportLocalSkillPayload,
+    LocalBootstrapPayload, LocalEventPayload, LocalNotificationPayload, LocalSkillInstallPayload,
+    OfflineSyncAckPayload, ProjectConfigInputPayload, ProjectConfigPayload,
+    ScanFindingCountsPayload, ScanFindingPayload, ScanTargetSummaryPayload, ToolConfigInputPayload,
+    ToolConfigPayload, UninstallSkillPayload, ValidateTargetPathPayload,
 };
 use crate::store::central_store::{default_central_store_root, ensure_central_store_root};
 use crate::store::sqlite::{ordered_migrations, statements};
@@ -86,6 +86,13 @@ impl P1LocalState {
         download_ticket: DownloadTicketPayload,
     ) -> Result<LocalSkillInstallPayload, String> {
         package_lifecycle::update_skill_package(self, download_ticket)
+    }
+
+    pub fn import_local_skill(
+        &self,
+        input: ImportLocalSkillPayload,
+    ) -> Result<LocalSkillInstallPayload, String> {
+        package_lifecycle::import_local_skill(self, input)
     }
 
     pub fn list_local_installs(&self) -> Result<Vec<LocalSkillInstallPayload>, String> {
@@ -168,6 +175,7 @@ impl P1LocalState {
         for (_, sql) in ordered_migrations() {
             conn.execute_batch(sql)?;
         }
+        persistence::ensure_local_skill_install_columns(&conn)?;
         persistence::ensure_local_notification_cache_columns(&conn)?;
         Ok(conn)
     }

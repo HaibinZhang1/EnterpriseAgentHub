@@ -46,11 +46,12 @@ export class PublishingPublicationService {
       const payload = review.submission_payload ?? {
         description: review.description,
         changelog: '',
-        category: 'uncategorized',
+        category: '其他',
         tags: [],
         compatibleTools: [],
         compatibleSystems: [],
       };
+      const updatesMetadata = review.review_type !== 'permission_change';
       let skillID: string;
       let skillUUID: string;
       let publishedVersionID: string | null = currentSkill?.current_version_id ?? null;
@@ -79,7 +80,7 @@ export class PublishingPublicationService {
             review.submitter_id,
             review.submitter_department_id,
             review.requested_visibility_level ?? 'private',
-            payload.category,
+            payload.category || '其他',
           ],
         );
         skillUUID = insertedSkill.rows[0].id;
@@ -102,7 +103,7 @@ export class PublishingPublicationService {
             review.skill_display_name,
             payload.description,
             review.requested_visibility_level ?? currentSkill.visibility_level,
-            payload.category,
+            updatesMetadata ? payload.category || '其他' : currentSkill.category ?? '其他',
           ],
         );
       }
@@ -166,22 +167,24 @@ export class PublishingPublicationService {
         publishedVersionID = versionID;
       }
 
-      await client.query('DELETE FROM skill_tags WHERE skill_id = $1', [skillUUID]);
-      for (const tag of payload.tags ?? []) {
-        await client.query('INSERT INTO skill_tags (skill_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING', [skillUUID, tag]);
-      }
-      await client.query('DELETE FROM skill_tool_compatibilities WHERE skill_id = $1', [skillUUID]);
-      const systems = payload.compatibleSystems.length > 0 ? payload.compatibleSystems : ['windows'];
-      for (const toolID of payload.compatibleTools ?? []) {
-        for (const system of systems) {
-          await client.query(
-            `
-            INSERT INTO skill_tool_compatibilities (skill_id, tool_id, system)
-            VALUES ($1, $2, $3)
-            ON CONFLICT DO NOTHING
-            `,
-            [skillUUID, toolID, system],
-          );
+      if (updatesMetadata) {
+        await client.query('DELETE FROM skill_tags WHERE skill_id = $1', [skillUUID]);
+        for (const tag of payload.tags ?? []) {
+          await client.query('INSERT INTO skill_tags (skill_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING', [skillUUID, tag]);
+        }
+        await client.query('DELETE FROM skill_tool_compatibilities WHERE skill_id = $1', [skillUUID]);
+        const systems = payload.compatibleSystems.length > 0 ? payload.compatibleSystems : ['windows'];
+        for (const toolID of payload.compatibleTools ?? []) {
+          for (const system of systems) {
+            await client.query(
+              `
+              INSERT INTO skill_tool_compatibilities (skill_id, tool_id, system)
+              VALUES ($1, $2, $3)
+              ON CONFLICT DO NOTHING
+              `,
+              [skillUUID, toolID, system],
+            );
+          }
         }
       }
 

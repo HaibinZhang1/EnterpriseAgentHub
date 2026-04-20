@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { DetailAccess, SkillStatus, VisibilityLevel } from '../common/p1-contracts';
+import type { DetailAccess, RiskLevel, SkillStatus, VisibilityLevel } from '../common/p1-contracts';
 
 export interface SkillListQuery {
   q?: string;
@@ -9,6 +9,7 @@ export interface SkillListQuery {
   enabled?: string;
   accessScope?: string;
   category?: string;
+  tags?: string;
   riskLevel?: string;
   publishedSince?: string;
   updatedSince?: string;
@@ -53,6 +54,12 @@ export interface ListedSkillRow extends SkillRow {
   total_count: string;
 }
 
+export interface SkillLeaderboardRow extends SkillRow {
+  recent_star_count: string;
+  recent_download_count: string;
+  hot_score: string;
+}
+
 export interface PackageRow {
   id: string;
   skill_id: string;
@@ -63,6 +70,13 @@ export interface PackageRow {
   file_count: number;
   object_key: string;
   content_type: string;
+}
+
+export interface SkillVersionRow {
+  version: string;
+  changelog: string | null;
+  risk_level: RiskLevel | null;
+  published_at: Date | string;
 }
 
 export interface DownloadablePackage {
@@ -90,6 +104,11 @@ export interface PackageDownloadTicketRow {
 export interface SkillListQueryPlan {
   page: number;
   pageSize: number;
+  text: string;
+  values: unknown[];
+}
+
+export interface SkillLeaderboardQueryPlan {
   text: string;
   values: unknown[];
 }

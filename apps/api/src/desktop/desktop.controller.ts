@@ -9,7 +9,7 @@ export class DesktopController {
 
   @Get('bootstrap')
   bootstrap(@Req() request: P1AuthenticatedRequest): Promise<BootstrapResponse> {
-    return this.desktopService.bootstrap(request.p1User!);
+    return this.desktopService.bootstrap(request.p1UserID ?? '', request.p1User!);
   }
 
   @Post('local-events')

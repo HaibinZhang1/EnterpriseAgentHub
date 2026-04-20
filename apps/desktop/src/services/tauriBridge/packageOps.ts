@@ -2,9 +2,18 @@ import type { DownloadTicket, EnabledTarget, LocalEvent, LocalSkillInstall, Requ
 import { P1_LOCAL_COMMANDS } from "@enterprise-agent-hub/shared-contracts";
 import { seedSkills } from "../../fixtures/p1SeedData.ts";
 import { appendSkillPath, detectDesktopPlatform, previewCentralStorePath } from "../../utils/platformPaths.ts";
-import { pendingLocalCommand } from "./common.ts";
+import { localCommandErrorMessage, pendingLocalCommand } from "./common.ts";
+import { buildDisableSkillArgs, buildEnableSkillArgs, buildUninstallSkillArgs, normalizeUninstallSkillResult } from "./localCommandArgs.ts";
 import { buildLocalEvent, buildTarget } from "./preview.ts";
-import { allowTauriMocks, getInvoke, isBrowserPreviewMode, mockWait, requireInvoke } from "./runtime.ts";
+import { allowTauriMocks, getInvoke, invokeWithTimeout, isBrowserPreviewMode, mockWait, requireInvoke, type TauriInvoker } from "./runtime.ts";
+
+async function callLocalCommand<T>(invoke: TauriInvoker, command: string, args: Record<string, unknown> | undefined, actionLabel: string): Promise<T> {
+  try {
+    return await invokeWithTimeout<T>(invoke, command, args);
+  } catch (error) {
+    throw new Error(localCommandErrorMessage(error, actionLabel));
+  }
+}
 
 function mockInstalledPackage(downloadTicket: DownloadTicket): LocalSkillInstall {
   return {
@@ -13,6 +22,7 @@ function mockInstalledPackage(downloadTicket: DownloadTicket): LocalSkillInstall
     localVersion: downloadTicket.version,
     localHash: downloadTicket.packageHash,
     sourcePackageHash: downloadTicket.packageHash,
+    sourceType: "remote",
     installedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     localStatus: "installed",
@@ -41,8 +51,8 @@ function fallbackSkill(skillID: string): SkillSummary {
     publishedAt: new Date().toISOString(),
     compatibleTools: [],
     compatibleSystems: [],
-    tags: [],
-    category: "local",
+    tags: ["入门"],
+    category: "其他",
     riskLevel: "unknown",
     starCount: 0,
     downloadCount: 0,
@@ -57,7 +67,7 @@ function fallbackSkill(skillID: string): SkillSummary {
 export async function installSkillPackage(downloadTicket: DownloadTicket): Promise<LocalSkillInstall> {
   const invoke = getInvoke();
   if (invoke) {
-    return invoke(P1_LOCAL_COMMANDS.installSkillPackage, { downloadTicket });
+    return callLocalCommand(invoke, P1_LOCAL_COMMANDS.installSkillPackage, { downloadTicket }, "安装 Skill");
   }
   if (isBrowserPreviewMode()) {
     throw pendingLocalCommand("install_skill_package");
@@ -72,7 +82,7 @@ export async function installSkillPackage(downloadTicket: DownloadTicket): Promi
 export async function updateSkillPackage(downloadTicket: DownloadTicket): Promise<LocalSkillInstall> {
   const invoke = getInvoke();
   if (invoke) {
-    return invoke(P1_LOCAL_COMMANDS.updateSkillPackage, { downloadTicket });
+    return callLocalCommand(invoke, P1_LOCAL_COMMANDS.updateSkillPackage, { downloadTicket }, "更新 Skill");
   }
   if (isBrowserPreviewMode()) {
     throw pendingLocalCommand("update_skill_package");
@@ -84,10 +94,54 @@ export async function updateSkillPackage(downloadTicket: DownloadTicket): Promis
   return mockInstalledPackage(downloadTicket);
 }
 
+export async function importLocalSkill(input: {
+  targetType: TargetType;
+  targetID: string;
+  relativePath: string;
+  skillID: string;
+  conflictStrategy: "rename" | "replace";
+}): Promise<LocalSkillInstall> {
+  const invoke = getInvoke();
+  if (invoke) {
+    return callLocalCommand(invoke, P1_LOCAL_COMMANDS.importLocalSkill, { input }, "纳入本地 Skill");
+  }
+  if (isBrowserPreviewMode()) {
+    throw pendingLocalCommand("import_local_skill");
+  }
+  if (!allowTauriMocks) {
+    await requireInvoke();
+  }
+  await mockWait(220);
+  return {
+    skillID: input.skillID,
+    displayName: input.skillID,
+    localVersion: "0.0.0-local",
+    localHash: `sha256:local-${input.skillID}`,
+    sourcePackageHash: `sha256:local-${input.skillID}`,
+    sourceType: "local_import",
+    installedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    localStatus: "enabled",
+    centralStorePath: appendSkillPath(previewCentralStorePath(), input.skillID, detectDesktopPlatform()),
+    enabledTargets: [
+      buildTarget(fallbackSkill(input.skillID), input.targetType, input.targetID, "copy")
+    ],
+    hasUpdate: false,
+    isScopeRestricted: false,
+    canUpdate: false
+  };
+}
+
 export async function uninstallSkill(skillID: string): Promise<{ removedTargetIDs: string[]; failedTargetIDs: string[]; event: LocalEvent }> {
   const invoke = getInvoke();
   if (invoke) {
-    return invoke(P1_LOCAL_COMMANDS.uninstallSkill, { skillID });
+    const result = await callLocalCommand<Parameters<typeof normalizeUninstallSkillResult>[0]>(
+      invoke,
+      P1_LOCAL_COMMANDS.uninstallSkill,
+      buildUninstallSkillArgs(skillID),
+      "卸载 Skill"
+    );
+    return normalizeUninstallSkillResult(result);
   }
   if (isBrowserPreviewMode()) {
     throw pendingLocalCommand("uninstall_skill");
@@ -117,14 +171,7 @@ export async function uninstallSkill(skillID: string): Promise<{ removedTargetID
 export async function enableSkill(input: { skill: SkillSummary; targetType: TargetType; targetID: string; requestedMode: RequestedMode; allowOverwrite?: boolean }): Promise<{ target: EnabledTarget; event: LocalEvent }> {
   const invoke = getInvoke();
   if (invoke) {
-    const target = await invoke<EnabledTarget>(P1_LOCAL_COMMANDS.enableSkill, {
-      skillID: input.skill.skillID,
-      version: input.skill.localVersion ?? input.skill.version,
-      targetType: input.targetType,
-      targetID: input.targetID,
-      preferredMode: input.requestedMode,
-      allowOverwrite: input.allowOverwrite ?? false
-    });
+    const target = await callLocalCommand<EnabledTarget>(invoke, P1_LOCAL_COMMANDS.enableSkill, buildEnableSkillArgs(input), "启用 Skill");
     return {
       target,
       event: buildLocalEvent({
@@ -170,11 +217,13 @@ export async function disableSkill(input: { skill: SkillSummary; targetID: strin
     (target) => target.targetID === input.targetID && (!input.targetType || target.targetType === input.targetType)
   );
   if (invoke) {
-    return invoke(P1_LOCAL_COMMANDS.disableSkill, {
-      skillID: input.skill.skillID,
-      targetType: existing?.targetType ?? input.targetType ?? "tool",
-      targetID: input.targetID
-    });
+    return callLocalCommand(invoke, P1_LOCAL_COMMANDS.disableSkill, {
+      ...buildDisableSkillArgs({
+        skillID: input.skill.skillID,
+        targetType: existing?.targetType ?? input.targetType ?? "tool",
+        targetID: input.targetID
+      })
+    }, "停用 Skill");
   }
   if (isBrowserPreviewMode()) {
     throw pendingLocalCommand("disable_skill");

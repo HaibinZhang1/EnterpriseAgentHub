@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS departments (
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
+  username TEXT NOT NULL,
+  phone_number TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   display_name TEXT NOT NULL,
   department_id TEXT REFERENCES departments(id),
@@ -26,6 +27,26 @@ CREATE TABLE IF NOT EXISTS users (
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS admin_level INTEGER;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS phone_number TEXT;
+
+ALTER TABLE users
+  DROP CONSTRAINT IF EXISTS users_username_key;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_phone_number_format'
+  ) THEN
+    ALTER TABLE users
+      ADD CONSTRAINT users_phone_number_format
+      CHECK (phone_number ~ '^1[0-9]{10}$');
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_number_unique
+  ON users(phone_number);
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id TEXT PRIMARY KEY,
@@ -46,7 +67,7 @@ CREATE TABLE IF NOT EXISTS skills (
   status TEXT NOT NULL CHECK (status IN ('published', 'delisted', 'archived')),
   visibility_level TEXT NOT NULL CHECK (visibility_level IN ('private', 'summary_visible', 'detail_visible', 'public_installable')),
   current_version_id UUID,
-  category TEXT,
+  category TEXT NOT NULL DEFAULT '其他',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -242,14 +263,14 @@ BEGIN
   INSERT INTO skill_search_documents (skill_id, document, search_vector)
   SELECT
     s.id,
-    concat_ws(' ', s.skill_id, s.display_name, s.description, coalesce(u.display_name, ''), coalesce(d.name, ''), string_agg(coalesce(st.tag, ''), ' ')),
-    to_tsvector('simple', concat_ws(' ', s.skill_id, s.display_name, s.description, coalesce(u.display_name, ''), coalesce(d.name, ''), string_agg(coalesce(st.tag, ''), ' ')))
+    concat_ws(' ', s.skill_id, s.display_name, s.description, coalesce(s.category, ''), coalesce(u.username, ''), coalesce(d.name, ''), string_agg(coalesce(st.tag, ''), ' ')),
+    to_tsvector('simple', concat_ws(' ', s.skill_id, s.display_name, s.description, coalesce(s.category, ''), coalesce(u.username, ''), coalesce(d.name, ''), string_agg(coalesce(st.tag, ''), ' ')))
   FROM skills s
   LEFT JOIN users u ON u.id = s.author_id
   LEFT JOIN departments d ON d.id = s.department_id
   LEFT JOIN skill_tags st ON st.skill_id = s.id
   WHERE s.id = target_skill_id
-  GROUP BY s.id, u.display_name, d.name
+  GROUP BY s.id, u.username, d.name
   ON CONFLICT (skill_id) DO UPDATE
     SET document = EXCLUDED.document,
         search_vector = EXCLUDED.search_vector;

@@ -98,6 +98,7 @@ pub struct LocalSkillInstall {
     pub local_version: String,
     pub local_hash: String,
     pub source_package_hash: String,
+    pub source_type: String,
     pub installed_at: String,
     pub updated_at: String,
     pub local_status: LocalStatus,

@@ -11,14 +11,15 @@ pub mod statements {
     pub const UPSERT_LOCAL_SKILL_INSTALL: &str = r#"
 INSERT INTO local_skill_installs (
   skill_id, display_name, local_version, local_hash, source_package_hash,
-  central_store_path, local_status, has_update, is_scope_restricted,
+  source_type, central_store_path, local_status, has_update, is_scope_restricted,
   can_update, installed_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(skill_id) DO UPDATE SET
   display_name = excluded.display_name,
   local_version = excluded.local_version,
   local_hash = excluded.local_hash,
   source_package_hash = excluded.source_package_hash,
+  source_type = excluded.source_type,
   central_store_path = excluded.central_store_path,
   local_status = excluded.local_status,
   has_update = excluded.has_update,

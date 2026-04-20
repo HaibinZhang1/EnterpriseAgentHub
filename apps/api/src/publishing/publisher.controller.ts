@@ -82,7 +82,7 @@ export class PublisherController {
     @Body() body: Record<string, string | undefined>,
     @UploadedFiles() files: Array<{ originalname: string; buffer: Buffer; size: number }>,
   ): Promise<PublisherSubmissionDetailDto> {
-    return this.publishingService.submitSubmission(request.p1User!, body, files ?? []);
+    return this.publishingService.submitSubmission(request.p1UserID ?? '', body, files ?? []);
   }
 
   @Post('submissions/:submissionID/withdraw')

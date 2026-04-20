@@ -28,6 +28,7 @@ export interface DepartmentRow {
 export interface UserRow {
   user_id: string;
   username: string;
+  phone_number: string;
   display_name: string;
   department_id: string;
   department_name: string;
@@ -70,7 +71,7 @@ export class AdminRepository {
       `
       SELECT
         u.id AS user_id,
-        u.display_name,
+        u.username AS display_name,
         u.role,
         u.admin_level,
         d.id AS department_id,
@@ -196,7 +197,8 @@ export class AdminRepository {
       SELECT
         u.id AS user_id,
         u.username,
-        u.display_name,
+        u.phone_number,
+        u.username AS display_name,
         u.department_id,
         d.name AS department_name,
         d.path AS department_path,
@@ -210,7 +212,7 @@ export class AdminRepository {
       JOIN departments d ON d.id = u.department_id
       WHERE (d.id = $1 OR d.path LIKE $2)
         AND u.status <> 'deleted'
-      ORDER BY d.path ASC, u.display_name ASC
+      ORDER BY d.path ASC, u.username ASC, u.phone_number ASC
       `,
       [scope.departmentID, `${scope.departmentPath}/%`],
     ).then((result) => result.rows);
@@ -219,22 +221,22 @@ export class AdminRepository {
   createUser(input: {
     userID: string;
     username: string;
+    phoneNumber: string;
     passwordHash: string;
-    displayName: string;
     departmentID: string;
     role: 'normal_user' | 'admin';
     adminLevel: number | null;
   }): Promise<void> {
     return this.database.query(
       `
-      INSERT INTO users (id, username, password_hash, display_name, department_id, role, admin_level, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      INSERT INTO users (id, username, phone_number, password_hash, display_name, department_id, role, admin_level, status)
+      VALUES ($1, $2, $3, $4, $2, $5, $6, $7, 'active')
       `,
       [
         input.userID,
         input.username,
+        input.phoneNumber,
         input.passwordHash,
-        input.displayName,
         input.departmentID,
         input.role,
         input.adminLevel,
@@ -242,13 +244,14 @@ export class AdminRepository {
     ).then(() => undefined);
   }
 
-  async loadManagedUser(targetUserID: string): Promise<ManagedUserRow> {
+  async loadManagedUserByPhoneNumber(phoneNumber: string): Promise<ManagedUserRow> {
     const target = await this.database.one<ManagedUserRow>(
       `
       SELECT
         u.id AS user_id,
         u.username,
-        u.display_name,
+        u.phone_number,
+        u.username AS display_name,
         u.department_id,
         d.name AS department_name,
         d.path AS department_path,
@@ -260,9 +263,9 @@ export class AdminRepository {
         (SELECT count(*) FROM skill_stars ss WHERE ss.user_id = u.id) AS star_count
       FROM users u
       JOIN departments d ON d.id = u.department_id
-      WHERE u.id = $1
+      WHERE u.phone_number = $1
       `,
-      [targetUserID],
+      [phoneNumber],
     );
     if (!target || target.status === 'deleted') {
       throw new NotFoundException('resource_not_found');
@@ -272,7 +275,8 @@ export class AdminRepository {
 
   updateUser(input: {
     targetUserID: string;
-    displayName: string | null;
+    username: string | null;
+    phoneNumber: string | null;
     departmentID: string | null;
     role: 'normal_user' | 'admin';
     adminLevel: number | null;
@@ -280,20 +284,38 @@ export class AdminRepository {
     return this.database.query(
       `
       UPDATE users
-      SET display_name = COALESCE($2, display_name),
-          department_id = COALESCE($3, department_id),
-          role = $4,
-          admin_level = $5
+      SET username = COALESCE($2, username),
+          phone_number = COALESCE($3, phone_number),
+          display_name = COALESCE($2, display_name),
+          department_id = COALESCE($4, department_id),
+          role = $5,
+          admin_level = $6
       WHERE id = $1
       `,
       [
         input.targetUserID,
-        input.displayName,
+        input.username,
+        input.phoneNumber,
         input.departmentID,
         input.role,
         input.adminLevel,
       ],
     ).then(() => undefined);
+  }
+
+  async phoneNumberExists(phoneNumber: string, excludedUserID: string | null = null): Promise<boolean> {
+    const result = await this.database.one<{ exists: boolean }>(
+      `
+      SELECT EXISTS (
+        SELECT 1
+        FROM users
+        WHERE phone_number = $1
+          AND ($2::text IS NULL OR id <> $2)
+      ) AS exists
+      `,
+      [phoneNumber, excludedUserID],
+    );
+    return result?.exists ?? false;
   }
 
   setUserStatus(targetUserID: string, status: 'frozen' | 'active' | 'deleted'): Promise<void> {
@@ -307,7 +329,7 @@ export class AdminRepository {
         s.skill_id,
         s.display_name,
         s.description,
-        COALESCE(u.display_name, '未知发布者') AS publisher_name,
+        COALESCE(u.username, '未知发布者') AS publisher_name,
         d.id AS department_id,
         d.name AS department_name,
         d.path AS department_path,
@@ -318,7 +340,7 @@ export class AdminRepository {
         s.status,
         s.visibility_level,
         (SELECT count(*) FROM skill_stars ss WHERE ss.skill_id = s.id) AS star_count,
-        (SELECT count(*) FROM download_events de WHERE de.skill_id = s.id) AS download_count,
+        (SELECT count(DISTINCT de.user_id) FROM download_events de WHERE de.skill_id = s.id AND de.purpose = 'install') AS download_count,
         s.updated_at
       FROM skills s
       JOIN departments d ON d.id = s.department_id
@@ -338,7 +360,7 @@ export class AdminRepository {
         s.skill_id,
         s.display_name,
         s.description,
-        COALESCE(u.display_name, '未知发布者') AS publisher_name,
+        COALESCE(u.username, '未知发布者') AS publisher_name,
         d.id AS department_id,
         d.name AS department_name,
         d.path AS department_path,
@@ -349,7 +371,7 @@ export class AdminRepository {
         s.status,
         s.visibility_level,
         (SELECT count(*) FROM skill_stars ss WHERE ss.skill_id = s.id) AS star_count,
-        (SELECT count(*) FROM download_events de WHERE de.skill_id = s.id) AS download_count,
+        (SELECT count(DISTINCT de.user_id) FROM download_events de WHERE de.skill_id = s.id AND de.purpose = 'install') AS download_count,
         s.updated_at
       FROM skills s
       JOIN departments d ON d.id = s.department_id

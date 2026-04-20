@@ -6,6 +6,7 @@ import type { P1WorkspaceState } from "../state/useP1Workspace.ts";
 import type { DesktopUIState } from "../state/useDesktopUIState.ts";
 import { downloadAuthenticatedFile } from "../services/p1Client.ts";
 import { localize, skillInitials } from "./desktopShared.tsx";
+import { iconToneForLabel, type IconTone } from "./iconTone.ts";
 
 export interface SectionProps {
   workspace: P1WorkspaceState;
@@ -39,12 +40,12 @@ export function AuthGateCard({
   );
 }
 
-export function SectionEmpty({ title, body }: { title: string; body: string }) {
+export function SectionEmpty({ title, body }: { title: string; body?: string }) {
   return (
     <div className="empty-state">
       <Search size={18} />
       <strong>{title}</strong>
-      <p>{body}</p>
+      {body ? <p>{body}</p> : null}
     </div>
   );
 }
@@ -61,12 +62,18 @@ export function TagPill({
 
 export function InitialBadge({
   label,
-  large = false
+  large = false,
+  tone,
+  className = ""
 }: {
   label: string;
   large?: boolean;
+  tone?: IconTone;
+  className?: string;
 }) {
-  return <span className={large ? "initial-badge large" : "initial-badge"}>{skillInitials(label)}</span>;
+  const resolvedTone = tone ?? iconToneForLabel(label);
+  const classes = ["initial-badge", large ? "large" : "", `icon-tone-${resolvedTone}`, className].filter(Boolean).join(" ");
+  return <span className={classes}>{skillInitials(label)}</span>;
 }
 
 export function SelectField({
@@ -115,7 +122,7 @@ function renderInlineMarkdown(value: string) {
     .replace(/\*([^*]+)\*/g, "<em>$1</em>");
 }
 
-function renderMarkdownPreview(content: string) {
+export function renderMarkdownPreview(content: string) {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const parts: string[] = [];
   let paragraph: string[] = [];
@@ -273,12 +280,14 @@ export function PackagePreviewPanel({
 
   return (
     <section className="preview-shell">
-      <div className="preview-list">
+      <div className="preview-list" data-testid="package-file-list">
         {files.map((file) => (
           <button
             key={file.relativePath}
             className={selectedPath === file.relativePath ? "preview-file active" : "preview-file"}
             type="button"
+            data-testid="package-file-row"
+            data-file-path={file.relativePath}
             onClick={() => setSelectedPath(file.relativePath)}
           >
             <span>
@@ -289,7 +298,7 @@ export function PackagePreviewPanel({
           </button>
         ))}
       </div>
-      <div className="preview-pane">
+      <div className="preview-pane" data-testid="package-file-preview">
         {!selectedFile ? <SectionEmpty title="选择文件查看内容" body="优先支持 Markdown 和纯文本文件预览。" /> : null}
         {selectedFile && !selectedFile.previewable ? (
           <div className="preview-empty">

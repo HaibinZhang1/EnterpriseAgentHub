@@ -22,6 +22,7 @@ pub(super) fn upsert_local_install(
             &install.local_version,
             &install.local_hash,
             &install.source_package_hash,
+            &install.source_type,
             install.central_store_path.to_string_lossy().to_string(),
             install.local_status.as_str(),
             bool_to_int(install.has_update),
@@ -183,13 +184,29 @@ pub(super) fn ensure_local_notification_cache_columns(conn: &Connection) -> rusq
     Ok(())
 }
 
+pub(super) fn ensure_local_skill_install_columns(conn: &Connection) -> rusqlite::Result<()> {
+    let mut statement = conn.prepare("PRAGMA table_info(local_skill_installs)")?;
+    let column_names = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    if !column_names.iter().any(|name| name == "source_type") {
+        conn.execute(
+            "ALTER TABLE local_skill_installs ADD COLUMN source_type TEXT NOT NULL DEFAULT 'remote'",
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
 pub(super) fn load_install_row(
     conn: &Connection,
     skill_id: &str,
 ) -> rusqlite::Result<LocalSkillInstallPayload> {
     conn.query_row(
         "
-        SELECT skill_id, display_name, local_version, local_hash, source_package_hash,
+        SELECT skill_id, display_name, local_version, local_hash, source_package_hash, source_type,
                installed_at, updated_at, local_status, central_store_path,
                has_update, is_scope_restricted, can_update
         FROM local_skill_installs
@@ -203,14 +220,15 @@ pub(super) fn load_install_row(
                 local_version: row.get(2)?,
                 local_hash: row.get(3)?,
                 source_package_hash: row.get(4)?,
-                installed_at: row.get(5)?,
-                updated_at: row.get(6)?,
-                local_status: row.get(7)?,
-                central_store_path: row.get(8)?,
+                source_type: row.get(5)?,
+                installed_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                local_status: row.get(8)?,
+                central_store_path: row.get(9)?,
                 enabled_targets: Vec::new(),
-                has_update: int_to_bool(row.get(9)?),
-                is_scope_restricted: int_to_bool(row.get(10)?),
-                can_update: int_to_bool(row.get(11)?),
+                has_update: int_to_bool(row.get(10)?),
+                is_scope_restricted: int_to_bool(row.get(11)?),
+                can_update: int_to_bool(row.get(12)?),
             })
         },
     )
@@ -435,7 +453,7 @@ pub(super) fn list_local_installs_from_conn(
 ) -> rusqlite::Result<Vec<LocalSkillInstallPayload>> {
     let mut statement = conn.prepare(
         "
-        SELECT skill_id, display_name, local_version, local_hash, source_package_hash,
+        SELECT skill_id, display_name, local_version, local_hash, source_package_hash, source_type,
                installed_at, updated_at, local_status, central_store_path,
                has_update, is_scope_restricted, can_update
         FROM local_skill_installs
@@ -449,14 +467,15 @@ pub(super) fn list_local_installs_from_conn(
             local_version: row.get(2)?,
             local_hash: row.get(3)?,
             source_package_hash: row.get(4)?,
-            installed_at: row.get(5)?,
-            updated_at: row.get(6)?,
-            local_status: row.get(7)?,
-            central_store_path: row.get(8)?,
+            source_type: row.get(5)?,
+            installed_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            local_status: row.get(8)?,
+            central_store_path: row.get(9)?,
             enabled_targets: Vec::new(),
-            has_update: int_to_bool(row.get(9)?),
-            is_scope_restricted: int_to_bool(row.get(10)?),
-            can_update: int_to_bool(row.get(11)?),
+            has_update: int_to_bool(row.get(10)?),
+            is_scope_restricted: int_to_bool(row.get(11)?),
+            can_update: int_to_bool(row.get(12)?),
         })
     })?;
 
@@ -480,6 +499,7 @@ pub(super) fn local_install_payload(
         local_version: install.local_version,
         local_hash: install.local_hash,
         source_package_hash: install.source_package_hash,
+        source_type: install.source_type,
         installed_at: install.installed_at,
         updated_at: install.updated_at,
         local_status: install.local_status.as_str().to_string(),

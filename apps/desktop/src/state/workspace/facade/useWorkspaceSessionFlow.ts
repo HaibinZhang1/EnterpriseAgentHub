@@ -1,6 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { LocalBootstrap, PageID, SkillSummary } from "../../../domain/p1";
-import { isPermissionError, isUnauthenticatedError, p1Client } from "../../../services/p1Client";
+import { isApiError, isPermissionError, isUnauthenticatedError, p1Client } from "../../../services/p1Client";
 import { hydrateAuthenticatedWorkspace, moveWorkspaceToGuest } from "./useWorkspaceBootstrap";
 import type { HandleRemoteError, RequireAuthenticatedAction } from "../workspaceTypes";
 
@@ -29,6 +29,8 @@ export function useWorkspaceSessionFlow(input: {
     setTools: (value: LocalBootstrap["tools"]) => void;
   };
   market: {
+    setLeaderboards: (value: null) => void;
+    setLeaderboardsLoading: (value: false) => void;
     setProgress: (value: any) => void;
     setSelectedSkillID: (value: string | ((current: string) => string)) => void;
     setSkills: (value: SkillSummary[] | ((current: SkillSummary[]) => SkillSummary[])) => void;
@@ -42,6 +44,11 @@ export function useWorkspaceSessionFlow(input: {
   remoteMarketFilters: Record<string, unknown>;
 }) {
   const { auth, localSync, market, publisher, adminReview, remoteMarketFilters } = input;
+  const remoteMarketFiltersRef = useRef(remoteMarketFilters);
+
+  useEffect(() => {
+    remoteMarketFiltersRef.current = remoteMarketFilters;
+  }, [remoteMarketFilters]);
 
   const moveToGuest = useCallback(
     async (message?: string) => {
@@ -51,6 +58,8 @@ export function useWorkspaceSessionFlow(input: {
         refreshLocalBootstrap: localSync.refreshLocalBootstrap,
         setAuthState: auth.setAuthState,
         setBootstrap: auth.setBootstrap,
+        setLeaderboards: market.setLeaderboards,
+        setLeaderboardsLoading: market.setLeaderboardsLoading,
         setSkills: market.setSkills,
         setOfflineEvents: localSync.setOfflineEvents,
         setScanTargets: localSync.setScanTargets,
@@ -71,6 +80,8 @@ export function useWorkspaceSessionFlow(input: {
       localSync.setNotifications,
       localSync.setOfflineEvents,
       localSync.setScanTargets,
+      market.setLeaderboards,
+      market.setLeaderboardsLoading,
       market.setSelectedSkillID,
       market.setSkills,
       publisher.resetPublisherState
@@ -90,14 +101,26 @@ export function useWorkspaceSessionFlow(input: {
       }
       if (isPermissionError(error)) {
         auth.stripAdminCapabilities();
-        market.setProgress({ operation: "update", skillID: "permission", stage: "权限变化", result: "failed", message: "当前账号已不具备该页面权限。" });
+        market.setProgress({ operation: "request", skillID: "permission", stage: "权限变化", result: "failed", message: "当前账号已不具备该页面权限。" });
         return true;
       }
       const message = error instanceof Error ? error.message : "请求失败";
-      market.setProgress({ operation: "update", skillID: "request", stage: "失败", result: "failed", message });
+      if (isApiError(error) && (error.status === 0 || error.code === "server_unavailable")) {
+        auth.setBootstrap((current: any) => ({
+          ...current,
+          connection: {
+            ...current.connection,
+            status: "offline",
+            lastError: message
+          }
+        }));
+        market.setProgress({ operation: "request", skillID: "offline", stage: "离线模式", result: "failed", message });
+        return true;
+      }
+      market.setProgress({ operation: "request", skillID: "request", stage: "请求失败", result: "failed", message });
       return false;
     },
-    [auth.setAuthError, auth.setLoginModalOpen, auth.stripAdminCapabilities, market.setProgress, moveToGuest]
+    [auth.setAuthError, auth.setBootstrap, auth.setLoginModalOpen, auth.stripAdminCapabilities, market.setProgress, moveToGuest]
   );
 
   const hydrateAuthenticatedState = useCallback(
@@ -106,7 +129,7 @@ export function useWorkspaceSessionFlow(input: {
         localBootstrap,
         localBootstrapRef: localSync.localBootstrapRef,
         refreshLocalBootstrap: localSync.refreshLocalBootstrap,
-        remoteMarketFilters,
+        remoteMarketFilters: remoteMarketFiltersRef.current,
         setAuthState: auth.setAuthState,
         setBootstrap: auth.setBootstrap,
         setSkills: market.setSkills,
@@ -130,7 +153,7 @@ export function useWorkspaceSessionFlow(input: {
       localSync.setTools,
       market.setSelectedSkillID,
       market.setSkills,
-      remoteMarketFilters
+      remoteMarketFiltersRef
     ]
   );
 
@@ -155,7 +178,7 @@ export function useWorkspaceSessionFlow(input: {
   );
 
   const login = useCallback(
-    async (inputValue: { username: string; password: string; serverURL: string }) => {
+    async (inputValue: { phoneNumber: string; password: string; serverURL: string }) => {
       auth.setAuthError(null);
       try {
         const localBootstrap = localSync.localBootstrapRef.current ?? (await localSync.refreshLocalBootstrap());

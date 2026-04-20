@@ -31,8 +31,7 @@ export type PublisherPane = "compose" | "mine";
 export type OverlayState =
   | { kind: "none" }
   | { kind: "skill_detail"; skillID: string; source: TopLevelSection }
-  | { kind: "publisher"; pane: PublisherPane }
-  | { kind: "diagnostics" };
+  | { kind: "publisher"; pane: PublisherPane };
 
 export interface FlashMessage {
   tone: "info" | "warning" | "danger" | "success";
@@ -40,7 +39,7 @@ export interface FlashMessage {
   body: string;
 }
 
-export interface ConfirmModalState extends Exclude<DesktopModalState, { type: "none" | "targets" | "tool_editor" | "project_editor" | "connection_status" | "app_update" | "settings" }> {
+export interface ConfirmModalState extends Exclude<DesktopModalState, { type: "none" | "targets" | "local_import" | "tool_editor" | "project_editor" | "connection_status" | "app_update" | "settings" }> {
   onConfirm?: () => Promise<void> | void;
 }
 
@@ -112,7 +111,6 @@ export function legacyPageForView(input: {
   managePane: ManagePane;
   overlay: OverlayState;
 }): Exclude<PageID, "detail" | "notifications"> {
-  if (input.overlay.kind === "diagnostics") return "target_management";
   if (input.overlay.kind === "publisher") return "publisher";
 
   switch (input.section) {
@@ -137,6 +135,10 @@ export function legacyPageForView(input: {
   }
 }
 
+export function skillDetailOverlay(skillID: string, source: TopLevelSection): OverlayState {
+  return { kind: "skill_detail", skillID, source };
+}
+
 function defaultAppUpdateState(): AppUpdateState {
   return {
     available: true,
@@ -146,7 +148,7 @@ function defaultAppUpdateState(): AppUpdateState {
     highlights: [
       "一级导航收敛为主页、社区、本地、管理",
       "发布中心改为覆盖层工作台",
-      "本地工具、项目和诊断统一收口到本地页"
+      "本地工具和项目统一收口到本地页"
     ],
     occurredAt: "2026-04-18T09:00:00.000Z",
     unread: true,
@@ -161,7 +163,6 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   const [communityPane, setCommunityPane] = useState<CommunityPane>(initialView.communityPane ?? "skills");
   const [localPane, setLocalPane] = useState<LocalPane>(initialView.localPane ?? "skills");
   const [managePane, setManagePane] = useState<ManagePane>(initialView.managePane ?? "reviews");
-  const [skillDetail, setSkillDetail] = useState<{ skillID: string; source: TopLevelSection } | null>(null);
   const [overlay, setOverlay] = useState<OverlayState>({ kind: "none" });
 
   const [notificationFilter, setNotificationFilter] = useState<NotificationListFilter>("all");
@@ -186,8 +187,15 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   }, [language, preferences]);
 
   const desktopNotifications = useMemo(
-    () => deriveDesktopNotifications({ notifications: workspace.notifications, appUpdate }),
-    [appUpdate, workspace.notifications]
+    () =>
+      deriveDesktopNotifications({
+        notifications:
+          workspace.bootstrap.connection.status === "connected"
+            ? workspace.notifications
+            : workspace.notifications.filter((notification) => notification.source !== "server"),
+        appUpdate
+      }),
+    [appUpdate, workspace.bootstrap.connection.status, workspace.notifications]
   );
 
   const visibleNotifications = useMemo(
@@ -217,11 +225,6 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     [workspace.isAdminConnected]
   );
 
-  const visibleSkillDetail = useMemo(
-    () => workspace.selectedSkill ?? workspace.marketSkills[0] ?? workspace.installedSkills[0] ?? null,
-    [workspace.installedSkills, workspace.marketSkills, workspace.selectedSkill]
-  );
-
   const desiredLegacyPage = useMemo(
     () => legacyPageForView({ section: activeSection, communityPane, localPane, managePane, overlay }),
     [activeSection, communityPane, localPane, managePane, overlay]
@@ -247,7 +250,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   }, [activeSection, workspace.isAdminConnected]);
 
   const closeSkillDetail = useCallback(() => {
-    setSkillDetail(null);
+    setOverlay((current) => (current.kind === "skill_detail" ? { kind: "none" } : current));
   }, []);
 
   const clearFlash = useCallback(() => {
@@ -270,32 +273,33 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
 
   const goHome = useCallback(() => {
     setOverlay({ kind: "none" });
-    setSkillDetail(null);
     setActiveSection("home");
   }, []);
 
   const navigateSection = useCallback((section: TopLevelSection) => {
     if (section === "manage" && !workspace.isAdminConnected) return;
-    setSkillDetail(null);
-    setOverlay((current) => (current.kind === "diagnostics" ? { kind: "none" } : current));
+    setOverlay((current) => (current.kind === "skill_detail" ? { kind: "none" } : current));
+    if (section === "community") {
+      setCommunityPane("skills");
+    }
     setActiveSection(section);
   }, [workspace.isAdminConnected]);
 
   const openCommunityPane = useCallback((pane: CommunityPane) => {
-    setSkillDetail(null);
+    setOverlay((current) => (current.kind === "skill_detail" ? { kind: "none" } : current));
     setActiveSection("community");
     setCommunityPane(pane);
   }, []);
 
   const openLocalPane = useCallback((pane: LocalPane) => {
-    setSkillDetail(null);
+    setOverlay((current) => (current.kind === "skill_detail" ? { kind: "none" } : current));
     setActiveSection("local");
     setLocalPane(pane);
   }, []);
 
   const openManagePane = useCallback((pane: ManagePane) => {
     if (!workspace.isAdminConnected) return;
-    setSkillDetail(null);
+    setOverlay((current) => (current.kind === "skill_detail" ? { kind: "none" } : current));
     setActiveSection("manage");
     setManagePane(pane);
   }, [workspace.isAdminConnected]);
@@ -306,14 +310,8 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
 
   const openSkillDetail = useCallback((skillID: string, source: TopLevelSection = activeSection) => {
     workspace.selectSkill(skillID);
-    setSkillDetail({ skillID, source });
+    setOverlay(skillDetailOverlay(skillID, source));
   }, [activeSection, workspace]);
-
-  const openDiagnosticsOverlay = useCallback(() => {
-    setSkillDetail(null);
-    setOverlay({ kind: "diagnostics" });
-    workspace.openPage("target_management");
-  }, [workspace]);
 
   const closeOverlay = useCallback(() => {
     setOverlay({ kind: "none" });
@@ -462,7 +460,12 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     });
   }, [closeModal, presentBlockingConfirm, workspace]);
 
+  const openLocalImportModal = useCallback((skillID: string) => {
+    presentBlockingModal({ type: "local_import", skillID });
+  }, [presentBlockingModal]);
+
   const targetsModalState = useTargetsModalState({
+    language,
     workspace,
     closeModal,
     setModal: presentBlockingModal,
@@ -482,7 +485,6 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     communityPane,
     localPane,
     managePane,
-    skillDetail,
     overlay,
     modal,
     confirmModal,
@@ -499,7 +501,6 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     notificationUnreadCount,
     notificationBadge,
     filteredReviews,
-    visibleSkillDetail,
     toolDraft: localConfigEditors.toolDraft,
     projectDraft: localConfigEditors.projectDraft,
     targetDrafts: targetsModalState.targetDrafts,
@@ -519,10 +520,10 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     setManagePane,
     setPublisherPane,
     openSkillDetail,
-    openDiagnosticsOverlay,
     openDesktopNotification,
     openInstallConfirm,
     openUninstallConfirm,
+    openLocalImportModal,
     openTargetsModal: targetsModalState.openTargetsModal,
     toggleTargetDraft: targetsModalState.toggleTargetDraft,
     applyTargetDrafts: targetsModalState.applyTargetDrafts,

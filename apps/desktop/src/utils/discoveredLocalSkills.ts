@@ -11,6 +11,7 @@ function humanizeSkillID(skillID: string): string {
 }
 
 function inferSkillID(summary: ScanTargetSummary, finding: ScanTargetSummary["findings"][number]): string | null {
+  if (!finding.canImport) return null;
   const raw = (finding.skillID ?? finding.relativePath.split(/[\\/]/).pop() ?? "").trim();
   if (!raw || raw.startsWith(".")) return null;
 
@@ -46,6 +47,19 @@ function defaultDescription(marketSkill: SkillSummary | undefined, targets: Disc
   return "从本地工具或项目目录扫描发现未托管副本，当前还不在 Central Store 管理范围内。";
 }
 
+function suggestLocalSkillID(skillID: string, installedSkillIDs: Set<string>): string {
+  const normalized = skillID.toLocaleLowerCase();
+  if (!installedSkillIDs.has(normalized)) return skillID;
+  const base = `${skillID}-local`;
+  let candidate = base;
+  let index = 2;
+  while (installedSkillIDs.has(candidate.toLocaleLowerCase())) {
+    candidate = `${base}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
 export function deriveDiscoveredLocalSkills(input: {
   installedSkills: SkillSummary[];
   marketSkills: SkillSummary[];
@@ -57,20 +71,24 @@ export function deriveDiscoveredLocalSkills(input: {
 
   for (const summary of input.scanTargets) {
     for (const finding of summary.findings) {
-      if (finding.kind === "managed") continue;
+      if (finding.kind === "managed" || !finding.canImport) continue;
       const skillID = inferSkillID(summary, finding);
       if (!skillID) continue;
 
       const normalizedSkillID = skillID.toLocaleLowerCase();
-      if (installedSkillIDs.has(normalizedSkillID)) continue;
-
       const marketSkill = marketSkillsByID.get(normalizedSkillID);
+      const hasCentralStoreConflict = installedSkillIDs.has(normalizedSkillID);
       const current = discoveredByID.get(normalizedSkillID) ?? {
         skillID,
-        displayName: marketSkill?.displayName ?? humanizeSkillID(skillID),
+        displayName: finding.importDisplayName ?? marketSkill?.displayName ?? humanizeSkillID(skillID),
         description: "",
+        version: finding.importVersion ?? "0.0.0-local",
         sourceLabel: "",
         matchedMarketSkill: Boolean(marketSkill),
+        canImport: true,
+        hasCentralStoreConflict,
+        hasScanConflict: false,
+        suggestedSkillID: suggestLocalSkillID(skillID, installedSkillIDs),
         targets: []
       };
 
@@ -80,11 +98,14 @@ export function deriveDiscoveredLocalSkills(input: {
         targetName: finding.targetName,
         targetPath: finding.targetPath,
         relativePath: finding.relativePath,
+        checksum: finding.checksum ?? null,
         findingKind: finding.kind as DiscoveredLocalSkill["targets"][number]["findingKind"],
         message: finding.message
       });
+      current.hasCentralStoreConflict = current.hasCentralStoreConflict || hasCentralStoreConflict;
+      current.hasScanConflict = new Set(current.targets.map((target) => target.checksum).filter(Boolean)).size > 1;
       current.sourceLabel = sourceLabel(current.targets);
-      current.description = defaultDescription(marketSkill, current.targets);
+      current.description = finding.importDescription ?? defaultDescription(marketSkill, current.targets);
       discoveredByID.set(normalizedSkillID, current);
     }
   }

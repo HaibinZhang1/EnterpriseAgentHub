@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
-import type { LocalNotification, ProjectConfig, PublishDraft, ScanTargetSummary, SkillSummary, ToolConfig } from "../src/domain/p1.ts";
+import type { LocalBootstrap, LocalNotification, ProjectConfig, PublishDraft, ScanTargetSummary, SkillSummary, ToolConfig } from "../src/domain/p1.ts";
 import { buildSkillListQuery } from "../src/services/p1Client.ts";
 import {
   buildPublishPrecheck,
@@ -8,12 +10,21 @@ import {
   legacyPageForView,
   mapLegacyPageToView,
   presentConfirmWithDrawerDismissal,
-  presentModalWithDrawerDismissal
+  presentModalWithDrawerDismissal,
+  skillDetailOverlay
 } from "../src/state/useDesktopUIState.ts";
 import { deriveDesktopNotifications, notificationBadgeLabel, resolveDesktopNotificationAction, type AppUpdateState } from "../src/state/ui/desktopNotifications.ts";
-import { collectInstalledSkillIssues } from "../src/state/ui/installedSkillSelectors.ts";
-import { deriveMarketSkills, deriveVisibleNavigation } from "../src/state/workspace/workspaceDerivedState.ts";
+import { deriveCommunityLeaderboards } from "../src/state/ui/communityLeaderboards.ts";
+import { buildTargetDrafts, collectInstalledSkillIssues, compareToolsByAvailability, matchesDiscoveredTargetFilter, matchesInstalledTargetFilter } from "../src/state/ui/installedSkillSelectors.ts";
+import { parseSkillFrontmatter, readSkillMarkdownFromUploadEntries, validateSkillSlug, validateUploadEntries } from "../src/state/ui/publishPackageIntrospection.ts";
+import { scanTargetsSummaryMessage } from "../src/state/ui/scanProgress.ts";
+import { resolveDisplayLanguage } from "../src/state/ui/useDesktopPreferences.ts";
+import { deriveMarketSkills, deriveVisibleNavigation, deriveWorkspaceState } from "../src/state/workspace/workspaceDerivedState.ts";
+import { iconToneForLabel, iconTones } from "../src/ui/iconTone.ts";
+import { buildDisableSkillArgs, buildEnableSkillArgs, buildUninstallSkillArgs, normalizeUninstallSkillResult } from "../src/services/tauriBridge/localCommandArgs.ts";
+import { deriveDiscoveredLocalSkills } from "../src/utils/discoveredLocalSkills.ts";
 import { defaultProjectSkillsPath, defaultToolConfigPath } from "../src/utils/platformPaths.ts";
+import { mergeLocalInstalls } from "../src/state/p1WorkspaceHelpers.ts";
 
 const baseDraft: PublishDraft = {
   submissionType: "publish",
@@ -27,8 +38,8 @@ const baseDraft: PublishDraft = {
   selectedDepartmentIDs: [],
   visibility: "detail_visible",
   changelog: "首次发布",
-  category: "governance",
-  tags: ["prompt", "governance"],
+  category: "开发",
+  tags: ["提示", "规范"],
   compatibleTools: ["codex"],
   compatibleSystems: ["windows"],
   files: [
@@ -56,8 +67,8 @@ const baseSkill: SkillSummary = {
   publishedAt: "2026-04-09T08:00:00Z",
   compatibleTools: ["codex"],
   compatibleSystems: ["windows"],
-  tags: ["governance"],
-  category: "开发效率",
+  tags: ["代码", "审查"],
+  category: "开发",
   riskLevel: "low",
   starCount: 20,
   downloadCount: 100,
@@ -72,6 +83,45 @@ test("publish precheck passes for a valid folder upload with SKILL.md", () => {
   const result = buildPublishPrecheck(baseDraft);
   assert.equal(result.canSubmit, true);
   assert.equal(result.items.find((item) => item.id === "skill-doc")?.status, "pass");
+  assert.equal(result.items.find((item) => item.id === "slug")?.status, "pass");
+});
+
+test("publish precheck rejects invalid slugs before submission", () => {
+  const result = buildPublishPrecheck({ ...baseDraft, skillID: "Bad Slug" });
+  assert.equal(result.canSubmit, false);
+  assert.equal(result.items.find((item) => item.id === "slug")?.status, "warn");
+});
+
+test("skill metadata parser reads SKILL.md frontmatter for publish autofill", async () => {
+  const markdown = `---\nname: ppt-generator\ndescription: 将用户讲稿一键生成乔布斯风极简科技感竖屏HTML演示稿。\n---\n\n# PPT Generator\n`;
+  assert.deepEqual(parseSkillFrontmatter(markdown), {
+    name: "ppt-generator",
+    description: "将用户讲稿一键生成乔布斯风极简科技感竖屏HTML演示稿。"
+  });
+  assert.equal(validateSkillSlug("ppt-generator").valid, true);
+
+  const file = new File([markdown], "SKILL.md", { type: "text/markdown" });
+  assert.equal(await readSkillMarkdownFromUploadEntries([{ file, relativePath: "ppt-generator/SKILL.md" }]), markdown);
+});
+
+test("publish upload validation rejects loose files and non-zip package uploads", () => {
+  const skillFile = new File(["# Skill"], "SKILL.md", { type: "text/markdown" });
+  const imageFile = new File(["png"], "logo.png", { type: "image/png" });
+  const zipFile = new File(["zip"], "skill.zip", { type: "application/zip" });
+
+  assert.match(validateUploadEntries([{ file: imageFile, relativePath: "logo.png" }], "folder") ?? "", /请选择文件夹/);
+  assert.match(validateUploadEntries([{ file: imageFile, relativePath: "logo.png" }], "zip") ?? "", /\.zip/);
+  assert.match(validateUploadEntries([{ file: imageFile, relativePath: "skill/logo.png" }], "folder") ?? "", /SKILL\.md/);
+  assert.equal(validateUploadEntries([{ file: skillFile, relativePath: "skill/SKILL.md" }], "folder"), null);
+  assert.equal(validateUploadEntries([{ file: zipFile, relativePath: "skill.zip" }], "zip"), null);
+});
+
+test("icon tones are stable and limited to the quiet palette", () => {
+  const label = "Review Helper";
+
+  assert.equal(iconToneForLabel(label), iconToneForLabel(label));
+  assert.ok(iconTones.includes(iconToneForLabel(label)));
+  assert.ok(iconTones.includes(iconToneForLabel("提示词护栏模板")));
 });
 
 test("blocking modal presentation closes the skill detail before opening the overlay", () => {
@@ -91,6 +141,24 @@ test("blocking modal presentation closes the skill detail before opening the ove
   assert.deepEqual(calls, ["close-detail", "modal:targets"]);
 });
 
+test("skill detail opens through overlay state instead of a replacement stage", () => {
+  assert.deepEqual(skillDetailOverlay("codex-review-helper", "community"), {
+    kind: "skill_detail",
+    skillID: "codex-review-helper",
+    source: "community"
+  });
+  assert.equal(
+    legacyPageForView({
+      section: "community",
+      communityPane: "skills",
+      localPane: "skills",
+      managePane: "reviews",
+      overlay: skillDetailOverlay("codex-review-helper", "community")
+    }),
+    "market"
+  );
+});
+
 test("clearing a confirm modal does not touch the skill detail overlay", () => {
   const calls: string[] = [];
   presentConfirmWithDrawerDismissal(null, {
@@ -105,7 +173,7 @@ test("clearing a confirm modal does not touch the skill detail overlay", () => {
   assert.deepEqual(calls, ["confirm:none"]);
 });
 
-test("new top-level navigation only shows manage for connected admins", () => {
+test("new top-level navigation only shows manage when admin capability is available", () => {
   assert.deepEqual(deriveTopLevelNavigation({ isAdminConnected: false }), ["home", "community", "local"]);
   assert.deepEqual(deriveTopLevelNavigation({ isAdminConnected: true }), ["home", "community", "local", "manage"]);
 });
@@ -201,9 +269,8 @@ test("workspace visible navigation still honors backend permissions and publish 
     authState: "authenticated",
     bootstrap: {
       user: {
-        userID: "u1",
         username: "lin",
-        displayName: "Lin",
+        phoneNumber: "13800001001",
         role: "admin",
         adminLevel: 4,
         departmentID: "d1",
@@ -237,14 +304,244 @@ test("workspace visible navigation still honors backend permissions and publish 
   assert.deepEqual(visible, ["home", "market", "my_installed", "publisher", "review", "admin_users"]);
 });
 
+test("offline authenticated navigation keeps cached admin entries until permission is revoked", () => {
+  const bootstrap = {
+    user: {
+      username: "lin",
+      phoneNumber: "13800001001",
+      role: "admin",
+      adminLevel: 1,
+      departmentID: "d1",
+      departmentName: "平台工程部",
+      locale: "zh-CN"
+    },
+    connection: {
+      status: "offline",
+      serverTime: "2026-04-18T10:00:00.000Z",
+      apiVersion: "1.0.0",
+      lastError: "无法连接服务"
+    },
+    features: {
+      p1Desktop: true,
+      publishSkill: true,
+      reviewWorkbench: true,
+      adminManage: true,
+      mcpManage: false,
+      pluginManage: false
+    },
+    counts: {
+      installedCount: 1,
+      enabledCount: 0,
+      updateAvailableCount: 0,
+      unreadNotificationCount: 0
+    },
+    navigation: ["home", "market", "my_installed", "publisher", "target_management", "review", "admin_users"],
+    menuPermissions: ["home", "market", "my_installed", "publisher", "target_management", "review", "admin_users"]
+  } as const;
+  const visible = deriveVisibleNavigation({
+    authState: "authenticated",
+    bootstrap
+  });
+
+  assert.deepEqual(visible, ["home", "market", "my_installed", "publisher", "target_management", "review", "admin_users"]);
+  assert.equal(
+    deriveWorkspaceState({
+      authState: "authenticated",
+      bootstrap,
+      departments: [],
+      filters: {
+        query: "",
+        department: "all",
+        compatibleTool: "all",
+        installed: "all",
+        enabled: "all",
+        accessScope: "include_public",
+        category: "all",
+        tags: [],
+        riskLevel: "all",
+        publishedWithin: "all",
+        updatedWithin: "all",
+        sort: "composite"
+      },
+      notifications: [],
+      scanTargets: [],
+      selectedDepartmentID: null,
+      selectedSkillID: "",
+      skills: []
+    }).isAdminConnected,
+    true
+  );
+});
+
+test("auto language prefers authenticated user locale over browser locale", () => {
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { language: "en-US" }
+  });
+
+  try {
+    assert.equal(
+      resolveDisplayLanguage({ language: "auto", autoDetectLanguage: true, theme: "classic", showInstallResults: true, syncLocalEvents: true }, "zh-CN"),
+      "zh-CN"
+    );
+  } finally {
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, "navigator", originalNavigator);
+    } else {
+      Reflect.deleteProperty(globalThis, "navigator");
+    }
+  }
+});
+
+test("target drafts localize adapter status labels in Chinese", () => {
+  const drafts = buildTargetDrafts(baseSkill, {
+    tools: [
+      {
+        toolID: "codex",
+        name: "Codex",
+        displayName: "Codex",
+        configPath: "/Users/demo/.codex/config.toml",
+        detectedPath: "/Users/demo/.codex/skills",
+        configuredPath: null,
+        skillsPath: "/Users/demo/.codex/skills",
+        enabled: true,
+        status: "detected",
+        adapterStatus: "detected",
+        detectionMethod: "default_path",
+        transform: "codex_skill",
+        transformStrategy: "codex_skill",
+        enabledSkillCount: 0,
+        lastScannedAt: "2026-04-10T08:40:00Z"
+      }
+    ],
+    projects: [],
+    scanTargets: []
+  } as never, "zh-CN");
+
+  assert.equal(drafts[0]?.statusLabel, "已检测");
+});
+
+test("target drafts only include available tools and enabled projects", () => {
+  const drafts = buildTargetDrafts(baseSkill, {
+    tools: [
+      {
+        toolID: "missing-tool",
+        name: "Missing Tool",
+        displayName: "Missing Tool",
+        configPath: "",
+        detectedPath: null,
+        configuredPath: null,
+        skillsPath: "",
+        enabled: true,
+        status: "missing",
+        adapterStatus: "missing",
+        detectionMethod: "default_path",
+        transform: "codex_skill",
+        transformStrategy: "codex_skill",
+        enabledSkillCount: 0,
+        lastScannedAt: null
+      },
+      {
+        toolID: "codex",
+        name: "Codex",
+        displayName: "Codex",
+        configPath: "/Users/demo/.codex/config.toml",
+        detectedPath: "/Users/demo/.codex/skills",
+        configuredPath: null,
+        skillsPath: "/Users/demo/.codex/skills",
+        enabled: true,
+        status: "detected",
+        adapterStatus: "detected",
+        detectionMethod: "default_path",
+        transform: "codex_skill",
+        transformStrategy: "codex_skill",
+        enabledSkillCount: 0,
+        lastScannedAt: "2026-04-10T08:40:00Z"
+      }
+    ],
+    projects: [
+      {
+        projectID: "disabled-project",
+        name: "Disabled Project",
+        displayName: "Disabled Project",
+        projectPath: "/repo/disabled",
+        skillsPath: "/repo/disabled/.codex/skills",
+        projectPathStatus: "valid",
+        projectPathStatusReason: null,
+        enabled: false,
+        enabledSkillCount: 0,
+        createdAt: "2026-04-10T08:40:00Z",
+        updatedAt: "2026-04-10T08:40:00Z"
+      },
+      {
+        projectID: "repo",
+        name: "Repo",
+        displayName: "Repo",
+        projectPath: "/repo",
+        skillsPath: "/repo/.codex/skills",
+        projectPathStatus: "valid",
+        projectPathStatusReason: null,
+        enabled: true,
+        enabledSkillCount: 0,
+        createdAt: "2026-04-10T08:40:00Z",
+        updatedAt: "2026-04-10T08:40:00Z"
+      }
+    ],
+    scanTargets: []
+  } as never, "zh-CN");
+
+  assert.deepEqual(drafts.map((draft) => draft.key), ["tool:codex", "project:repo"]);
+});
+
+test("available tools sort ahead of missing tools", () => {
+  const tools: ToolConfig[] = [
+    {
+      toolID: "missing-tool",
+      name: "Missing Tool",
+      displayName: "Missing Tool",
+      configPath: "",
+      detectedPath: null,
+      configuredPath: null,
+      skillsPath: "",
+      enabled: true,
+      status: "missing",
+      adapterStatus: "missing",
+      detectionMethod: "default_path",
+      transform: "codex_skill",
+      transformStrategy: "codex_skill",
+      enabledSkillCount: 0,
+      lastScannedAt: null
+    },
+    {
+      toolID: "codex",
+      name: "Codex",
+      displayName: "Codex",
+      configPath: "/Users/demo/.codex/config.toml",
+      detectedPath: "/Users/demo/.codex/skills",
+      configuredPath: null,
+      skillsPath: "/Users/demo/.codex/skills",
+      enabled: true,
+      status: "detected",
+      adapterStatus: "detected",
+      detectionMethod: "default_path",
+      transform: "codex_skill",
+      transformStrategy: "codex_skill",
+      enabledSkillCount: 0,
+      lastScannedAt: "2026-04-10T08:40:00Z"
+    }
+  ];
+
+  assert.deepEqual([...tools].sort(compareToolsByAvailability).map((tool) => tool.toolID), ["codex", "missing-tool"]);
+});
+
 test("market skill derivation still filters and sorts by query and category", () => {
   const result = deriveMarketSkills({
     authState: "authenticated",
     bootstrap: {
       user: {
-        userID: "u1",
         username: "lin",
-        displayName: "Lin",
+        phoneNumber: "13800001001",
         role: "admin",
         adminLevel: 4,
         departmentID: "d1",
@@ -280,7 +577,8 @@ test("market skill derivation still filters and sorts by query and category", ()
       installed: "all",
       enabled: "all",
       accessScope: "include_public",
-      category: "开发效率",
+      category: "开发",
+      tags: ["审查"],
       riskLevel: "all",
       publishedWithin: "all",
       updatedWithin: "all",
@@ -293,6 +591,7 @@ test("market skill derivation still filters and sorts by query and category", ()
         skillID: "doc-helper",
         displayName: "Doc Helper",
         category: "文档",
+        tags: ["文档"],
         downloadCount: 10,
         description: "文档辅助"
       }
@@ -301,6 +600,37 @@ test("market skill derivation still filters and sorts by query and category", ()
 
   assert.equal(result.length, 1);
   assert.equal(result[0]?.skillID, "review-helper");
+});
+
+test("community leaderboards expose hot fallback plus independent download and star rankings", () => {
+  const skills: SkillSummary[] = [
+    { ...baseSkill, skillID: "download-first", displayName: "下载最高", starCount: 10, downloadCount: 900 },
+    { ...baseSkill, skillID: "star-first", displayName: "Star 最高", starCount: 300, downloadCount: 20 },
+    { ...baseSkill, skillID: "balanced", displayName: "均衡增长", starCount: 90, downloadCount: 500 }
+  ];
+
+  const leaderboards = deriveCommunityLeaderboards(skills, 2);
+
+  assert.deepEqual(leaderboards.hot, []);
+  assert.deepEqual(leaderboards.downloads.map((skill) => skill.skillID), ["download-first", "balanced"]);
+  assert.deepEqual(leaderboards.stars.map((skill) => skill.skillID), ["star-first", "balanced"]);
+  assert.equal(leaderboards.downloads[0]?.recentDownloadCount, 0);
+  assert.equal(leaderboards.downloads[0]?.hotScore, 0);
+  assert.equal(
+    deriveCommunityLeaderboards(Array.from({ length: 11 }, (_, index) => ({ ...baseSkill, skillID: `skill-${index}`, displayName: `Skill ${index}`, starCount: index }))).stars.length,
+    10
+  );
+});
+
+test("community leaderboard UI defaults to hot tab without carousel timer", () => {
+  const sourcePath = fileURLToPath(new URL("../src/ui/desktopSections.tsx", import.meta.url));
+  const source = readFileSync(sourcePath, "utf8");
+
+  assert.match(source, /useState<CommunityLeaderboardKind>\("hot"\)/);
+  assert.match(source, /label: "热榜"/);
+  assert.doesNotMatch(source, /setInterval\(\(\) => \{\s*setActiveLeaderboard/s);
+  assert.doesNotMatch(source, /leaderboardPaused/);
+  assert.doesNotMatch(source, /leaderboard-carousel-track/);
 });
 
 test("installed skill issues cover local hash drift and unavailable targets", () => {
@@ -379,6 +709,7 @@ test("installed skill issues cover local hash drift and unavailable targets", ()
           targetPath: "D:\\cursor\\rules\\context-router",
           relativePath: "context-router",
           checksum: "drifted",
+          canImport: false,
           message: "目标内容与登记产物不一致，可能被手动修改或被其他流程覆盖。"
         }
       ],
@@ -399,6 +730,264 @@ test("platform path helpers emit expected defaults", () => {
   assert.equal(defaultProjectSkillsPath("/Users/demo/EnterpriseAgentHub", "macos"), "/Users/demo/EnterpriseAgentHub/.codex/skills");
 });
 
+test("local command args use Tauri camelCase IDs", () => {
+  assert.deepEqual(
+    buildEnableSkillArgs({
+      skill: { skillID: "ops-oncall-companion", localVersion: "1.2.0", version: "1.2.0" },
+      targetType: "tool",
+      targetID: "codex",
+      requestedMode: "symlink"
+    }),
+    {
+      skillId: "ops-oncall-companion",
+      version: "1.2.0",
+      targetType: "tool",
+      targetId: "codex",
+      preferredMode: "symlink",
+      allowOverwrite: false
+    }
+  );
+  assert.deepEqual(buildDisableSkillArgs({ skillID: "ops-oncall-companion", targetType: "project", targetID: "repo" }), {
+    skillId: "ops-oncall-companion",
+    targetType: "project",
+    targetId: "repo"
+  });
+  assert.deepEqual(buildUninstallSkillArgs("ops-oncall-companion"), { skillId: "ops-oncall-companion" });
+});
+
+test("uninstall result normalizer accepts Rust and legacy ID spellings", () => {
+  const event = {
+    eventID: "event-1",
+    eventType: "uninstall_result",
+    skillID: "ops-oncall-companion",
+    version: "1.0.0",
+    targetType: "tool",
+    targetID: "codex",
+    targetPath: "/tmp/codex",
+    requestedMode: "copy",
+    resolvedMode: "copy",
+    occurredAt: "2026-04-19T00:00:00Z",
+    result: "success"
+  } as const;
+
+  assert.deepEqual(normalizeUninstallSkillResult({ removedTargetIds: ["codex"], failedTargetIds: [], event }), {
+    removedTargetIDs: ["codex"],
+    failedTargetIDs: [],
+    event
+  });
+});
+
+test("discovered local skills include unmanaged tool and project skills", () => {
+  const discovered = deriveDiscoveredLocalSkills({
+    installedSkills: [{ ...baseSkill, skillID: "managed-skill" }],
+    marketSkills: [{ ...baseSkill, skillID: "tool-helper", displayName: "Tool Helper", localVersion: null }],
+    scanTargets: [
+      {
+        id: "tool:codex",
+        targetType: "tool",
+        targetID: "codex",
+        targetName: "Codex",
+        targetPath: "/Users/demo/.codex/skills",
+        transformStrategy: "codex_skill",
+        scannedAt: "2026-04-19T00:00:00Z",
+        counts: { managed: 1, unmanaged: 1, conflict: 0, orphan: 0 },
+        findings: [
+          {
+            id: "tool:codex:tool-helper",
+            kind: "unmanaged",
+            skillID: null,
+            targetType: "tool",
+            targetID: "codex",
+            targetName: "Codex",
+            targetPath: "/Users/demo/.codex/skills/tool-helper",
+            relativePath: "tool-helper",
+            checksum: "sha256:tool",
+            canImport: true,
+            importDisplayName: "Tool Helper",
+            importDescription: "Tool helper local skill",
+            importVersion: "1.0.0",
+            message: "发现未托管目录，启用时不会在未确认前覆盖。"
+          },
+          {
+            id: "tool:codex:managed-skill",
+            kind: "managed",
+            skillID: "managed-skill",
+            targetType: "tool",
+            targetID: "codex",
+            targetName: "Codex",
+            targetPath: "/Users/demo/.codex/skills/managed-skill",
+            relativePath: "managed-skill",
+            checksum: "sha256:managed",
+            canImport: false,
+            message: "目标内容与本地登记一致，处于托管状态。"
+          },
+          {
+            id: "tool:codex:no-skill-md",
+            kind: "unmanaged",
+            skillID: "no-skill-md",
+            targetType: "tool",
+            targetID: "codex",
+            targetName: "Codex",
+            targetPath: "/Users/demo/.codex/skills/no-skill-md",
+            relativePath: "no-skill-md",
+            checksum: "sha256:no-skill",
+            canImport: false,
+            message: "发现未托管目录，但根目录缺少 SKILL.md，仅记录在扫描结果中。"
+          }
+        ],
+        lastError: null
+      },
+      {
+        id: "project:repo",
+        targetType: "project",
+        targetID: "repo",
+        targetName: "Repo",
+        targetPath: "/repo/.codex/skills",
+        transformStrategy: "codex_skill",
+        scannedAt: "2026-04-19T00:00:00Z",
+        counts: { managed: 0, unmanaged: 1, conflict: 0, orphan: 0 },
+        findings: [
+          {
+            id: "project:repo:project-helper",
+            kind: "unmanaged",
+            skillID: null,
+            targetType: "project",
+            targetID: "repo",
+            targetName: "Repo",
+            targetPath: "/repo/.codex/skills/project-helper",
+            relativePath: "project-helper",
+            checksum: "sha256:project",
+            canImport: true,
+            importDisplayName: "Project Helper",
+            importDescription: "Project helper local skill",
+            importVersion: "1.0.0",
+            message: "发现未托管目录，启用时不会在未确认前覆盖。"
+          }
+        ],
+        lastError: null
+      }
+    ]
+  });
+
+  assert.deepEqual(discovered.map((skill) => skill.skillID), ["project-helper", "tool-helper"]);
+  assert.equal(discovered.find((skill) => skill.skillID === "tool-helper")?.matchedMarketSkill, true);
+  assert.equal(discovered.some((skill) => skill.skillID === "no-skill-md"), false);
+  assert.equal(discovered.find((skill) => skill.skillID === "tool-helper")?.version, "1.0.0");
+});
+
+test("local skills can be filtered by tool and project targets", () => {
+  const installedSkill: SkillSummary = {
+    ...baseSkill,
+    enabledTargets: [
+      {
+        targetType: "tool",
+        targetID: "codex",
+        targetName: "Codex",
+        targetPath: "/Users/demo/.codex/skills",
+        requestedMode: "symlink",
+        resolvedMode: "symlink",
+        fallbackReason: null,
+        enabledAt: "2026-04-10T08:40:00Z"
+      }
+    ]
+  };
+  const discoveredSkill = deriveDiscoveredLocalSkills({
+    installedSkills: [],
+    marketSkills: [],
+    scanTargets: [
+      {
+        id: "project:repo",
+        targetType: "project",
+        targetID: "repo",
+        targetName: "Repo",
+        targetPath: "/repo/.codex/skills",
+        transformStrategy: "codex_skill",
+        scannedAt: "2026-04-19T00:00:00Z",
+        counts: { managed: 0, unmanaged: 1, conflict: 0, orphan: 0 },
+        findings: [
+          {
+            id: "project:repo:project-helper",
+            kind: "unmanaged",
+            skillID: null,
+            targetType: "project",
+            targetID: "repo",
+            targetName: "Repo",
+            targetPath: "/repo/.codex/skills/project-helper",
+            relativePath: "project-helper",
+            checksum: "sha256:project",
+            canImport: true,
+            importDisplayName: "Project Helper",
+            importDescription: "Project helper local skill",
+            importVersion: "1.0.0",
+            message: "发现未托管目录。"
+          }
+        ],
+        lastError: null
+      }
+    ]
+  })[0];
+  assert.ok(discoveredSkill);
+
+  assert.equal(matchesInstalledTargetFilter(installedSkill, "tool", "codex"), true);
+  assert.equal(matchesInstalledTargetFilter(installedSkill, "project", "repo"), false);
+  assert.equal(matchesDiscoveredTargetFilter(discoveredSkill, "project", "repo"), true);
+  assert.equal(matchesDiscoveredTargetFilter(discoveredSkill, "tool", "codex"), false);
+});
+
+test("scan summary message reports target and issue counts", () => {
+  assert.equal(
+    scanTargetsSummaryMessage([
+      {
+        id: "tool:codex",
+        targetType: "tool",
+        targetID: "codex",
+        targetName: "Codex",
+        targetPath: "/Users/demo/.codex/skills",
+        transformStrategy: "codex_skill",
+        scannedAt: "2026-04-19T00:00:00Z",
+        counts: { managed: 1, unmanaged: 2, conflict: 1, orphan: 0 },
+        findings: [],
+        lastError: "permission denied"
+      }
+    ]),
+    "扫描完成：已扫描 1 个目标，发现 4 个需关注项。"
+  );
+});
+
+test("mergeLocalInstalls appends local-only imports in authenticated market state", () => {
+  const merged = mergeLocalInstalls([{ ...baseSkill, skillID: "remote-skill" }], {
+    installs: [
+      {
+        skillID: "local-helper",
+        displayName: "Local Helper",
+        localVersion: "0.0.0-local",
+        localHash: "sha256:local",
+        sourcePackageHash: "sha256:local",
+        sourceType: "local_import",
+        installedAt: "2026-04-19T00:00:00Z",
+        updatedAt: "2026-04-19T00:00:00Z",
+        localStatus: "enabled",
+        centralStorePath: "/tmp/central-store/skills/local-helper/0.0.0-local",
+        enabledTargets: [],
+        hasUpdate: false,
+        isScopeRestricted: false,
+        canUpdate: false
+      }
+    ],
+    tools: [],
+    projects: [],
+    notifications: [],
+    offlineEvents: [],
+    pendingOfflineEventCount: 0,
+    unreadLocalNotificationCount: 0,
+    centralStorePath: "/tmp/central-store"
+  } satisfies LocalBootstrap);
+
+  assert.deepEqual(merged.map((skill) => skill.skillID), ["remote-skill", "local-helper"]);
+  assert.equal(merged.find((skill) => skill.skillID === "local-helper")?.canUpdate, false);
+  assert.equal(merged.find((skill) => skill.skillID === "local-helper")?.authorName, "本地托管");
+});
+
 test("market query builder keeps installed/enabled local-only while sending category and date filters", () => {
   const params = buildSkillListQuery(
     {
@@ -408,7 +997,8 @@ test("market query builder keeps installed/enabled local-only while sending cate
       installed: "installed",
       enabled: "enabled",
       accessScope: "authorized_only",
-      category: "governance",
+      category: "开发",
+      tags: ["代码", "审查"],
       riskLevel: "low",
       publishedWithin: "30d",
       updatedWithin: "7d",
@@ -421,7 +1011,8 @@ test("market query builder keeps installed/enabled local-only while sending cate
   assert.equal(params.get("departmentID"), "平台工程部");
   assert.equal(params.get("compatibleTool"), "codex");
   assert.equal(params.get("accessScope"), "authorized_only");
-  assert.equal(params.get("category"), "governance");
+  assert.equal(params.get("category"), "开发");
+  assert.equal(params.get("tags"), "代码,审查");
   assert.equal(params.get("riskLevel"), "low");
   assert.equal(params.get("sort"), "download_count");
   assert.equal(params.get("installed"), null);

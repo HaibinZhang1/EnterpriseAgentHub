@@ -8,9 +8,9 @@ import type {
   PublisherSkillSummary,
   PublisherSubmissionDetail,
   SkillSummary
-} from "../domain/p1";
-import { guestBootstrap } from "../fixtures/p1SeedData";
-import { detectDesktopPlatform } from "../utils/platformPaths";
+} from "../domain/p1.ts";
+import { guestBootstrap } from "../fixtures/p1SeedData.ts";
+import { detectDesktopPlatform } from "../utils/platformPaths.ts";
 
 export function notificationFromProgress(progress: OperationProgress, fallbackReason?: string | null): LocalNotification {
   const isSuccess = progress.result === "success";
@@ -87,7 +87,7 @@ export function applyLocalInstallToSkill(skill: SkillSummary, install: LocalSkil
     lastEnabledAt: enabledTargets[0]?.enabledAt ?? skill.lastEnabledAt,
     hasLocalHashDrift: false,
     isScopeRestricted: install.isScopeRestricted,
-    canUpdate: install.canUpdate && install.localVersion !== skill.version
+    canUpdate: install.sourceType !== "local_import" && install.canUpdate && install.localVersion !== skill.version
   };
 }
 
@@ -97,7 +97,7 @@ export function localSummaryFromInstall(install: LocalSkillInstall): SkillSummar
   return {
     skillID: install.skillID,
     displayName: install.displayName,
-    description: "本机已安装的 Skill。登录后可同步市场详情、通知和管理员功能。",
+    description: install.sourceType === "local_import" ? "从本地工具或项目目录纳入 Central Store 管理的 Skill。" : "本机已安装的 Skill。登录后可同步市场详情、通知和管理员功能。",
     version: install.localVersion,
     localVersion: install.localVersion,
     latestVersion: install.localVersion,
@@ -105,22 +105,22 @@ export function localSummaryFromInstall(install: LocalSkillInstall): SkillSummar
     visibilityLevel: "detail_visible",
     detailAccess: "summary",
     canInstall: false,
-    canUpdate: install.canUpdate,
+    canUpdate: install.sourceType !== "local_import" && install.canUpdate,
     installState: enabledTargets.length > 0 ? "enabled" : "installed",
-    authorName: "本机缓存",
-    authorDepartment: "离线工作台",
+    authorName: install.sourceType === "local_import" ? "本地托管" : "本机缓存",
+    authorDepartment: install.sourceType === "local_import" ? "Central Store" : "离线工作台",
     currentVersionUpdatedAt: install.updatedAt,
     publishedAt: install.installedAt,
     compatibleTools: [],
     compatibleSystems: [compatibleSystem],
-    tags: ["本机"],
-    category: "本地已安装",
+    tags: install.sourceType === "local_import" ? ["本地托管"] : ["入门"],
+    category: "其他",
     riskLevel: "unknown",
     starCount: 0,
     downloadCount: 0,
     starred: false,
-    readme: "登录后可获取完整 README、安全摘要和远端状态。",
-    reviewSummary: install.isScopeRestricted ? "权限已收缩，当前本地版本仍可继续使用。" : "离线模式下仅展示本机状态。",
+    readme: install.sourceType === "local_import" ? "该 Skill 仅保存在本机 Central Store，不会上传服务器。" : "登录后可获取完整 README、安全摘要和远端状态。",
+    reviewSummary: install.sourceType === "local_import" ? "本地导入项不会参与市场更新；卸载会删除 Central Store 与已认领目标路径。" : install.isScopeRestricted ? "权限已收缩，当前本地版本仍可继续使用。" : "离线模式下仅展示本机状态。",
     isScopeRestricted: install.isScopeRestricted,
     hasLocalHashDrift: false,
     enabledTargets,
@@ -130,10 +130,14 @@ export function localSummaryFromInstall(install: LocalSkillInstall): SkillSummar
 
 export function mergeLocalInstalls(skills: SkillSummary[], localBootstrap: LocalBootstrap): SkillSummary[] {
   const installs = new Map(localBootstrap.installs.map((install) => [install.skillID, install]));
-  return skills.map((skill) => {
+  const merged = skills.map((skill) => {
     const install = installs.get(skill.skillID);
+    if (install) {
+      installs.delete(skill.skillID);
+    }
     return install ? applyLocalInstallToSkill(skill, install) : skill;
   });
+  return [...merged, ...[...installs.values()].map(localSummaryFromInstall)];
 }
 
 export function buildGuestBootstrap(localBootstrap: LocalBootstrap, message?: string): BootstrapContext {

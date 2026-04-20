@@ -31,7 +31,7 @@ export class P1AuthGuard implements CanActivate {
 
     const session = await this.authService.authenticateAccessToken(rawToken);
     request.p1SessionID = session.sessionID;
-    request.p1UserID = session.user.userID;
+    request.p1UserID = session.userID;
     request.p1User = session.user;
     request.p1MenuPermissions = session.menuPermissions;
     return true;

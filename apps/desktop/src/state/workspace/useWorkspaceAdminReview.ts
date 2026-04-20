@@ -138,7 +138,7 @@ export function useWorkspaceAdminReviewActions(input: {
   );
 
   const createAdminUser = useCallback(
-    async (input: { username: string; password: string; displayName: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }) => {
+    async (input: { username: string; phoneNumber: string; password: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }) => {
       requireAuthenticatedAction("admin_users", async () => {
         setAdminUsers(await p1Client.createAdminUser(input));
       });
@@ -147,37 +147,37 @@ export function useWorkspaceAdminReviewActions(input: {
   );
 
   const updateAdminUser = useCallback(
-    async (targetUserID: string, input: { displayName?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }) => {
+    async (phoneNumber: string, input: { username?: string; phoneNumber?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }) => {
       requireAuthenticatedAction("admin_users", async () => {
-        setAdminUsers(await p1Client.updateAdminUser(targetUserID, input));
+        setAdminUsers(await p1Client.updateAdminUser(phoneNumber, input));
       });
     },
     [requireAuthenticatedAction, setAdminUsers]
   );
 
   const freezeAdminUser = useCallback(
-    async (targetUserID: string) => {
+    async (phoneNumber: string) => {
       requireAuthenticatedAction("admin_users", async () => {
-        setAdminUsers(await p1Client.freezeAdminUser(targetUserID));
+        setAdminUsers(await p1Client.freezeAdminUser(phoneNumber));
       });
     },
     [requireAuthenticatedAction, setAdminUsers]
   );
 
   const unfreezeAdminUser = useCallback(
-    async (targetUserID: string) => {
+    async (phoneNumber: string) => {
       requireAuthenticatedAction("admin_users", async () => {
-        setAdminUsers(await p1Client.unfreezeAdminUser(targetUserID));
+        setAdminUsers(await p1Client.unfreezeAdminUser(phoneNumber));
       });
     },
     [requireAuthenticatedAction, setAdminUsers]
   );
 
   const deleteAdminUser = useCallback(
-    async (targetUserID: string) => {
+    async (phoneNumber: string) => {
       requireAuthenticatedAction("admin_users", async () => {
-        await p1Client.deleteAdminUser(targetUserID);
-        setAdminUsers((current) => current.filter((user) => user.userID !== targetUserID));
+        await p1Client.deleteAdminUser(phoneNumber);
+        setAdminUsers((current) => current.filter((user) => user.phoneNumber !== phoneNumber));
       });
     },
     [requireAuthenticatedAction, setAdminUsers]

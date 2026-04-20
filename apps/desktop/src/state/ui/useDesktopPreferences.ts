@@ -7,6 +7,10 @@ export const defaultPreferences: PreferenceState = {
   language: "auto",
   autoDetectLanguage: true,
   theme: "classic",
+  agentProvider: "openai",
+  agentBaseURL: "https://api.openai.com/v1",
+  agentApiKey: "",
+  agentDefaultModel: "gpt-5.4",
   showInstallResults: true,
   syncLocalEvents: true
 };
@@ -28,8 +32,8 @@ export function resolveDisplayLanguage(preferences: PreferenceState, fallbackLoc
   }
 
   const candidate =
-    (typeof navigator !== "undefined" ? navigator.language : "") ||
     fallbackLocale ||
+    (typeof navigator !== "undefined" ? navigator.language : "") ||
     "zh-CN";
   return candidate.toLocaleLowerCase().startsWith("en") ? "en-US" : "zh-CN";
 }

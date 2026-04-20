@@ -31,6 +31,10 @@ test('P1 API contracts preserve symlink-first copy fallback fields', () => {
   assert.match(sharedContracts, /menuPermissions/);
   assert.match(sharedContracts, /Notifications: "notifications"/);
   assert.match(sharedContracts, /adminLevel/);
+  assert.match(sharedContracts, /readonly phoneNumber: string/);
+  assert.match(sharedContracts, /readonly username: string/);
+  assert.doesNotMatch(sharedContracts, /interface CurrentUser \{[\s\S]*readonly userID:/);
+  assert.match(sharedContracts, /interface LoginRequest \{[\s\S]*readonly phoneNumber: string/);
   assert.match(contracts, /WorkflowState/);
   assert.match(contracts, /PublisherSkillSummaryDto/);
   assert.match(contracts, /ReviewPrecheckItemDto/);
@@ -70,6 +74,8 @@ test('PostgreSQL migration includes FTS and local-event idempotency gates', () =
   assert.match(migration, /requested_mode TEXT CHECK/);
   assert.match(migration, /resolved_mode TEXT CHECK/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS auth_sessions/);
+  assert.match(migration, /phone_number TEXT NOT NULL UNIQUE/);
+  assert.doesNotMatch(migration, /username TEXT NOT NULL UNIQUE/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS review_items/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS admin_level/);
   assert.match(publishingMigration, /ALTER TABLE review_items/);

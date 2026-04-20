@@ -10,6 +10,7 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 require("ts-node/register/transpile-only");
 
+const { BadRequestException } = require("@nestjs/common");
 const { PackageStorageService } = require("../src/publishing/package-storage.service.ts");
 
 async function createZipFixture(fileMap) {
@@ -75,4 +76,30 @@ test("PackageStorageService lists previewable package files and truncates large 
   assert.equal(largeDoc.fileType, "text");
   assert.equal(largeDoc.truncated, true);
   assert.equal(largeDoc.content.length, 256 * 1024);
+});
+
+test("PackageStorageService rejects loose non-zip uploads before staging", async () => {
+  const service = createService();
+
+  await assert.rejects(
+    () =>
+      service.stageSubmissionPackage(
+        "rv_invalid",
+        {
+          skillID: "prompt-guardrails",
+          displayName: "Prompt Guardrails",
+          description: "desc",
+          version: "1.0.0",
+          visibilityLevel: "detail_visible",
+          scopeType: "current_department",
+          selectedDepartmentIDs: [],
+          compatibleTools: ["codex"],
+          compatibleSystems: ["windows"],
+          tags: ["提示"],
+          category: "开发"
+        },
+        [{ originalname: "logo.png", buffer: Buffer.from("not a package") }]
+      ),
+    BadRequestException
+  );
 });

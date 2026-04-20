@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { DownloadTicketResponse, PageResponse, SkillDetail, SkillSummary } from '../common/p1-contracts';
+import type { DownloadTicketResponse, PageResponse, SkillDetail, SkillLeaderboardsResponse, SkillSummary } from '../common/p1-contracts';
 import { PackageDownloadService } from './package-download.service';
 import { SkillQueryService } from './skill-query.service';
 import { SkillsRepository } from './skills.repository';
 import type { DownloadablePackage, DownloadTicketRequest, SkillListQuery } from './skills.types';
 
-export { buildSkillListQueryPlan } from './skills.query';
+export { buildSkillLeaderboardQueryPlan, buildSkillListQueryPlan } from './skills.query';
 export type { DownloadablePackage, DownloadTicketRequest, SkillListQuery, SkillListQueryPlan } from './skills.types';
 
 @Injectable()
@@ -18,6 +18,10 @@ export class SkillsService {
 
   async list(query: SkillListQuery, userID?: string): Promise<PageResponse<SkillSummary>> {
     return this.queryService.list(query, userID);
+  }
+
+  async leaderboards(userID?: string): Promise<SkillLeaderboardsResponse> {
+    return this.queryService.leaderboards(userID);
   }
 
   async detail(skillID: string, userID?: string): Promise<SkillDetail | SkillSummary> {

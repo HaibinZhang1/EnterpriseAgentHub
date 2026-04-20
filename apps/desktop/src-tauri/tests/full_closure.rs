@@ -20,7 +20,8 @@ struct FullClosureArtifact {
 
 #[derive(Debug, Deserialize)]
 struct Credentials {
-    username: String,
+    #[serde(rename = "phoneNumber")]
+    phone_number: String,
     password: String,
 }
 
@@ -156,7 +157,7 @@ fn login(client: &Client, artifact: &FullClosureArtifact) -> String {
         .header("content-type", "application/json")
         .body(
             serde_json::json!({
-                "username": artifact.author.username,
+                "phoneNumber": artifact.author.phone_number,
                 "password": artifact.author.password,
             })
             .to_string(),

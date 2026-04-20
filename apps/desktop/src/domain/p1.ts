@@ -36,6 +36,8 @@ import type {
   ReviewType as SharedReviewType,
   RiskLevel as SharedRiskLevel,
   ScanFindingKind as SharedScanFindingKind,
+  SkillVersionSummary as SharedSkillVersionSummary,
+  SkillLeaderboardsResponse as SharedSkillLeaderboardsResponse,
   SkillStatus as SharedSkillStatus,
   SkillSummary as SharedSkillSummary,
   SubmissionType as SharedSubmissionType,
@@ -44,6 +46,7 @@ import type {
   ProjectDirectorySelection as SharedProjectDirectorySelection,
   WorkflowState as SharedWorkflowState
 } from "@enterprise-agent-hub/shared-contracts";
+export { SKILL_CATEGORIES, SKILL_TAGS } from "@enterprise-agent-hub/shared-contracts";
 
 type MutableDeep<T> = T extends readonly (infer TItem)[]
   ? MutableDeep<TItem>[]
@@ -79,6 +82,7 @@ export type PackagePreviewFileType = SharedPackagePreviewFileType;
 export type AuthState = "guest" | "authenticated";
 export type SettingsLanguage = "auto" | "zh-CN" | "en-US";
 export type SettingsTheme = "classic" | "fresh" | "contrast";
+export type SettingsAgentProvider = "openai" | "anthropic" | "custom";
 export type NotificationListFilter = "all" | "unread";
 export type ReviewBoardTab = "pending" | "in_review" | "reviewed";
 export type PendingActionCode = "pending_backend" | "pending_local_command";
@@ -97,8 +101,9 @@ export interface EnabledTarget extends Omit<SharedEnabledTarget, "fallbackReason
 
 export type DownloadTicket = SharedDownloadTicket;
 
-export interface LocalSkillInstall extends Omit<SharedLocalSkillInstall, "enabledTargets" | "sourcePackageHash"> {
+export interface LocalSkillInstall extends Omit<SharedLocalSkillInstall, "enabledTargets" | "sourcePackageHash" | "sourceType"> {
   sourcePackageHash: string;
+  sourceType: "remote" | "local_import";
   enabledTargets: EnabledTarget[];
 }
 
@@ -121,11 +126,25 @@ export interface SkillSummary extends Omit<SharedSkillSummary, "cannotInstallRea
   starred: boolean;
   readme?: string;
   reviewSummary?: string;
+  riskDescription?: string;
+  versions?: MutableDeep<SharedSkillVersionSummary[]>;
   latestVersion?: string;
   isScopeRestricted: boolean;
   hasLocalHashDrift: boolean;
   enabledTargets: EnabledTarget[];
   lastEnabledAt: string | null;
+}
+
+export interface SkillLeaderboardItem extends SkillSummary {
+  recentStarCount: number;
+  recentDownloadCount: number;
+  hotScore: number;
+}
+
+export interface SkillLeaderboardsResponse extends Omit<MutableDeep<SharedSkillLeaderboardsResponse>, "hot" | "stars" | "downloads"> {
+  hot: SkillLeaderboardItem[];
+  stars: SkillLeaderboardItem[];
+  downloads: SkillLeaderboardItem[];
 }
 
 export interface ToolConfig {
@@ -152,6 +171,8 @@ export interface ProjectConfig {
   displayName: string;
   projectPath: string;
   skillsPath: string;
+  projectPathStatus?: "valid" | "missing" | "invalid" | "unwritable";
+  projectPathStatusReason?: string | null;
   enabled: boolean;
   enabledSkillCount: number;
   createdAt: string;
@@ -168,6 +189,10 @@ export interface ScanFinding {
   targetPath: string;
   relativePath: string;
   checksum?: string | null;
+  canImport: boolean;
+  importDisplayName?: string | null;
+  importDescription?: string | null;
+  importVersion?: string | null;
   message: string;
 }
 
@@ -195,6 +220,7 @@ export interface DiscoveredLocalSkillTarget {
   targetName: string;
   targetPath: string;
   relativePath: string;
+  checksum?: string | null;
   findingKind: Exclude<ScanFindingKind, "managed">;
   message: string;
 }
@@ -203,8 +229,13 @@ export interface DiscoveredLocalSkill {
   skillID: string;
   displayName: string;
   description: string;
+  version: string;
   sourceLabel: string;
   matchedMarketSkill: boolean;
+  canImport: boolean;
+  hasCentralStoreConflict: boolean;
+  hasScanConflict: boolean;
+  suggestedSkillID: string;
   targets: DiscoveredLocalSkillTarget[];
 }
 
@@ -229,6 +260,7 @@ export interface PublishDraft {
   submissionType: SubmissionType;
   uploadMode: "none" | "zip" | "folder";
   packageName: string;
+  skillEntryPath?: string | null;
   skillID: string;
   displayName: string;
   description: string;
@@ -266,6 +298,10 @@ export interface PreferenceState {
   language: SettingsLanguage;
   autoDetectLanguage: boolean;
   theme: SettingsTheme;
+  agentProvider: SettingsAgentProvider;
+  agentBaseURL: string;
+  agentApiKey: string;
+  agentDefaultModel: string;
   showInstallResults: boolean;
   syncLocalEvents: boolean;
 }
@@ -321,6 +357,10 @@ export type DesktopModalState =
       skillID: string;
     }
   | {
+      type: "local_import";
+      skillID: string;
+    }
+  | {
       type: "tool_editor";
     }
   | {
@@ -343,7 +383,7 @@ export interface LocalEvent extends Omit<SharedLocalEvent, "fallbackReason" | "r
 }
 
 export interface OperationProgress {
-  operation: "install" | "update" | "enable" | "disable" | "uninstall";
+  operation: "install" | "update" | "enable" | "disable" | "uninstall" | "import" | "request" | "scan";
   skillID: string;
   stage: string;
   result: "running" | "success" | "failed";
@@ -358,6 +398,7 @@ export interface MarketFilters {
   enabled: "all" | "enabled" | "not_enabled";
   accessScope: "include_public" | "authorized_only";
   category: string;
+  tags: string[];
   riskLevel: "all" | RiskLevel;
   publishedWithin: "all" | "7d" | "30d" | "90d";
   updatedWithin: "all" | "7d" | "30d" | "90d";

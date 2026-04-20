@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { normalizePhoneNumber } from '../auth/phone-number';
 import { hashPassword } from '../auth/password';
 import { AdminRepository } from './admin.repository';
 import {
@@ -83,8 +84,8 @@ export class AdminWriteService {
     userID: string,
     input: {
       username?: string;
+      phoneNumber?: string;
       password?: string;
-      displayName?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;
@@ -92,10 +93,13 @@ export class AdminWriteService {
   ): Promise<void> {
     const actor = assertAdminActor(await this.repository.loadActor(userID));
     const username = input.username?.trim();
+    const phoneNumber = normalizePhoneNumber(input.phoneNumber);
     const password = input.password?.trim();
-    const displayName = input.displayName?.trim();
-    if (!username || !password || !displayName || !input.departmentID || !input.role) {
+    if (!username || !password || !input.departmentID || !input.role) {
       throw new BadRequestException('validation_failed');
+    }
+    if (await this.repository.phoneNumberExists(phoneNumber)) {
+      throw new BadRequestException('phone_number_already_exists');
     }
 
     const department = await this.repository.loadDepartment(input.departmentID);
@@ -110,8 +114,8 @@ export class AdminWriteService {
     await this.repository.createUser({
       userID: `u_${randomBytes(6).toString('hex')}`,
       username,
+      phoneNumber,
       passwordHash: hashPassword(password),
-      displayName,
       departmentID: department.id,
       role: normalizedRole,
       adminLevel: normalizedAdminLevel,
@@ -122,14 +126,16 @@ export class AdminWriteService {
     userID: string,
     targetUserID: string,
     input: {
-      displayName?: string;
+      username?: string;
+      phoneNumber?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;
     },
   ): Promise<void> {
     const actor = assertAdminActor(await this.repository.loadActor(userID));
-    const target = await this.repository.loadManagedUser(targetUserID);
+    const targetPhoneNumber = normalizePhoneNumber(targetUserID);
+    const target = await this.repository.loadManagedUserByPhoneNumber(targetPhoneNumber);
     assertManagedUser(actor, target);
 
     const nextDepartment = input.departmentID ? await this.repository.loadDepartment(input.departmentID) : null;
@@ -140,10 +146,16 @@ export class AdminWriteService {
     const nextRole = input.role ?? target.role;
     const nextAdminLevel = nextRole === 'admin' ? (input.adminLevel ?? target.admin_level ?? null) : null;
     assertAssignableRole(actor, nextRole, nextAdminLevel, target.user_id === actor.userID);
+    const nextUsername = input.username?.trim() || null;
+    const nextPhoneNumber = input.phoneNumber === undefined ? null : normalizePhoneNumber(input.phoneNumber);
+    if (nextPhoneNumber && await this.repository.phoneNumberExists(nextPhoneNumber, target.user_id)) {
+      throw new BadRequestException('phone_number_already_exists');
+    }
 
     await this.repository.updateUser({
-      targetUserID,
-      displayName: input.displayName?.trim() || null,
+      targetUserID: target.user_id,
+      username: nextUsername,
+      phoneNumber: nextPhoneNumber,
       departmentID: nextDepartment?.id ?? null,
       role: nextRole,
       adminLevel: nextAdminLevel,
@@ -156,28 +168,28 @@ export class AdminWriteService {
     nextStatus: 'frozen' | 'active',
   ): Promise<void> {
     const actor = assertAdminActor(await this.repository.loadActor(userID));
-    const target = await this.repository.loadManagedUser(targetUserID);
+    const target = await this.repository.loadManagedUserByPhoneNumber(normalizePhoneNumber(targetUserID));
     assertManagedUser(actor, target);
     if (target.user_id === actor.userID) {
       throw new ForbiddenException('permission_denied');
     }
 
-    await this.repository.setUserStatus(targetUserID, nextStatus);
+    await this.repository.setUserStatus(target.user_id, nextStatus);
     if (nextStatus === 'frozen') {
-      await this.authService.revokeAllSessionsForUser(targetUserID);
+      await this.authService.revokeAllSessionsForUser(target.user_id);
     }
   }
 
   async deleteUser(userID: string, targetUserID: string): Promise<void> {
     const actor = assertAdminActor(await this.repository.loadActor(userID));
-    const target = await this.repository.loadManagedUser(targetUserID);
+    const target = await this.repository.loadManagedUserByPhoneNumber(normalizePhoneNumber(targetUserID));
     assertManagedUser(actor, target);
     if (target.user_id === actor.userID) {
       throw new ForbiddenException('permission_denied');
     }
 
-    await this.repository.setUserStatus(targetUserID, 'deleted');
-    await this.authService.revokeAllSessionsForUser(targetUserID);
+    await this.repository.setUserStatus(target.user_id, 'deleted');
+    await this.authService.revokeAllSessionsForUser(target.user_id);
   }
 
   async setSkillStatus(

@@ -134,8 +134,8 @@ export function filterAdminUsers(users: AdminUser[], filters: AdminUserFilters):
     if (filters.status !== "all" && user.status !== filters.status) return false;
     if (!query) return true;
     const searchable = [
-      user.displayName,
       user.username,
+      user.phoneNumber,
       user.departmentName,
       getAdminUserDepartmentPath(user),
       user.role === "admin" ? `admin l${user.adminLevel ?? ""}` : "normal user"

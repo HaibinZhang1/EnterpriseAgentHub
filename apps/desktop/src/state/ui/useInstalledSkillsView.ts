@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import type { P1WorkspaceState } from "../useP1Workspace.ts";
-import { collectInstalledSkillIssues, matchesInstalledFilter } from "./installedSkillSelectors.ts";
-import type { InstalledListFilter } from "./installedSkillsTypes.ts";
+import { collectInstalledSkillIssues, compareToolsByAvailability, matchesInstalledFilter, matchesInstalledTargetFilter } from "./installedSkillSelectors.ts";
+import type { InstalledListFilter, InstalledTargetFilterType, InstalledTargetFilterValue } from "./installedSkillsTypes.ts";
+
+function parseInstalledTargetFilter(value: InstalledTargetFilterValue): { type: InstalledTargetFilterType; id: string } {
+  if (value === "all") return { type: "all", id: "all" };
+  const [type, id] = value.split(":") as [Exclude<InstalledTargetFilterType, "all">, string];
+  return { type, id };
+}
 
 export function useInstalledSkillsView(
   workspace: P1WorkspaceState,
@@ -11,7 +17,9 @@ export function useInstalledSkillsView(
   }
 ) {
   const [installedQuery, setInstalledQuery] = useState("");
+  const [installedTargetFilterValue, setInstalledTargetFilterValue] = useState<InstalledTargetFilterValue>("all");
   const installedFilter = input.installedFilter;
+  const parsedInstalledTargetFilter = parseInstalledTargetFilter(installedTargetFilterValue);
 
   const installedSkillIssuesByID = useMemo(
     () =>
@@ -26,14 +34,27 @@ export function useInstalledSkillsView(
     return workspace.installedSkills.filter((skill) => {
       const issues = installedSkillIssuesByID[skill.skillID] ?? [];
       const matchesFilter = matchesInstalledFilter(skill, installedFilter, issues);
+      const matchesTarget = matchesInstalledTargetFilter(skill, parsedInstalledTargetFilter.type, parsedInstalledTargetFilter.id);
       const matchesQuery =
         query.length === 0 ||
         skill.displayName.toLocaleLowerCase().includes(query) ||
         skill.skillID.toLocaleLowerCase().includes(query) ||
         issues.some((issue) => issue.toLocaleLowerCase().includes(query));
-      return matchesFilter && matchesQuery;
+      return matchesFilter && matchesTarget && matchesQuery;
     });
-  }, [installedFilter, installedQuery, installedSkillIssuesByID, workspace.installedSkills]);
+  }, [installedFilter, installedQuery, installedSkillIssuesByID, parsedInstalledTargetFilter.id, parsedInstalledTargetFilter.type, workspace.installedSkills]);
+
+  const installedTargetOptions = useMemo(() => {
+    const tools = [...workspace.tools].sort(compareToolsByAvailability).map((tool) => ({
+      id: `tool:${tool.toolID}` as const,
+      label: tool.displayName || tool.name
+    }));
+    const projects = [...workspace.projects].sort((left, right) => left.name.localeCompare(right.name) || left.projectID.localeCompare(right.projectID)).map((project) => ({
+      id: `project:${project.projectID}` as const,
+      label: project.name
+    }));
+    return [...tools, ...projects];
+  }, [workspace.projects, workspace.tools]);
 
   const installedFilterCounts = useMemo(
     () => ({
@@ -49,6 +70,11 @@ export function useInstalledSkillsView(
   return {
     installedQuery,
     setInstalledQuery,
+    installedTargetFilterType: parsedInstalledTargetFilter.type,
+    installedTargetFilterID: parsedInstalledTargetFilter.id,
+    installedTargetFilterValue,
+    setInstalledTargetFilterValue,
+    installedTargetOptions,
     installedFilter: input.installedFilter,
     setInstalledFilter: input.setInstalledFilter,
     installedSkillIssuesByID,

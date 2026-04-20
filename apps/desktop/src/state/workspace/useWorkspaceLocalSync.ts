@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { AuthState, BootstrapContext, LocalBootstrap, LocalEvent, LocalNotification, ScanTargetSummary } from "../../domain/p1";
-import { p1Client } from "../../services/p1Client";
-import { desktopBridge } from "../../services/tauriBridge";
-import { upsertNotifications } from "../p1WorkspaceHelpers";
-import type { HandleRemoteError } from "./workspaceTypes";
-import { emptyLocalNotifications } from "./workspaceTypes";
+import type { AuthState, BootstrapContext, LocalBootstrap, LocalEvent, LocalNotification, OperationProgress, ScanTargetSummary } from "../../domain/p1";
+import { p1Client } from "../../services/p1Client.ts";
+import { desktopBridge } from "../../services/tauriBridge.ts";
+import { upsertNotifications } from "../p1WorkspaceHelpers.ts";
+import { scanTargetsErrorMessage, scanTargetsSummaryMessage } from "../ui/scanProgress.ts";
+import type { HandleRemoteError } from "./workspaceTypes.ts";
+import { emptyLocalNotifications } from "./workspaceTypes.ts";
 
 export function useWorkspaceLocalSyncState() {
   const [tools, setTools] = useState<LocalBootstrap["tools"]>([]);
@@ -78,6 +79,7 @@ export function useWorkspaceLocalSyncActions(input: {
   setNotifications: Dispatch<SetStateAction<LocalNotification[]>>;
   setProjects: Dispatch<SetStateAction<LocalBootstrap["projects"]>>;
   setTools: Dispatch<SetStateAction<LocalBootstrap["tools"]>>;
+  updateSkillProgress: (nextProgress: OperationProgress) => void;
 }) {
   const {
     authState,
@@ -88,7 +90,8 @@ export function useWorkspaceLocalSyncActions(input: {
     refreshLocalScans,
     setNotifications,
     setProjects,
-    setTools
+    setTools,
+    updateSkillProgress
   } = input;
 
   const markNotificationsRead = useCallback(
@@ -141,8 +144,41 @@ export function useWorkspaceLocalSyncActions(input: {
   );
 
   const scanLocalTargets = useCallback(async () => {
-    return refreshLocalScans();
-  }, [refreshLocalScans]);
+    updateSkillProgress({
+      operation: "scan",
+      skillID: "local-targets",
+      stage: "启动扫描",
+      result: "running",
+      message: "正在扫描工具与项目目录。"
+    });
+    try {
+      updateSkillProgress({
+        operation: "scan",
+        skillID: "local-targets",
+        stage: "读取工具和项目目录",
+        result: "running",
+        message: "正在读取已配置工具和项目的 Skills 路径。"
+      });
+      const summaries = await refreshLocalScans();
+      updateSkillProgress({
+        operation: "scan",
+        skillID: "local-targets",
+        stage: "完成",
+        result: "success",
+        message: scanTargetsSummaryMessage(summaries)
+      });
+      return summaries;
+    } catch (error) {
+      updateSkillProgress({
+        operation: "scan",
+        skillID: "local-targets",
+        stage: "失败",
+        result: "failed",
+        message: scanTargetsErrorMessage(error)
+      });
+      throw error;
+    }
+  }, [refreshLocalScans, updateSkillProgress]);
 
   const validateTargetPath = useCallback(async (targetPath: string) => {
     return desktopBridge.validateTargetPath(targetPath);

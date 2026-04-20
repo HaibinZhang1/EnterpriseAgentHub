@@ -12,6 +12,7 @@ import type {
   AdapterStatus,
   DetectionMethod,
   PreferenceState,
+  ProjectConfig,
   PublishDraft,
   PublishScopeType,
   ReviewAction,
@@ -226,7 +227,7 @@ export function settingsLanguageLabel(languageValue: PreferenceState["language"]
     : {
         auto: "自动",
         "zh-CN": "中文",
-        "en-US": "English"
+        "en-US": "英文"
       }[languageValue];
 }
 
@@ -246,6 +247,22 @@ export function adapterStatusLabel(status: AdapterStatus, language: DisplayLangu
         invalid: "路径无效",
         disabled: "已停用"
       }[status];
+}
+
+export function projectPathStatusLabel(status: ProjectConfig["projectPathStatus"], language: DisplayLanguage = "zh-CN"): string {
+  return language === "en-US"
+    ? {
+        valid: "Path Valid",
+        missing: "Path Missing",
+        invalid: "Path Invalid",
+        unwritable: "Not Writable"
+      }[status ?? "invalid"]
+    : {
+        valid: "路径有效",
+        missing: "路径缺失",
+        invalid: "路径无效",
+        unwritable: "不可写"
+      }[status ?? "invalid"];
 }
 
 export function detectionMethodLabel(method: DetectionMethod, language: DisplayLanguage = "zh-CN"): string {

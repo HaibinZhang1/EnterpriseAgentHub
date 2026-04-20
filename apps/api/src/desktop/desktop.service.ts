@@ -25,7 +25,7 @@ export class DesktopService {
     private readonly permissionResolver: PermissionResolverService,
   ) {}
 
-  async bootstrap(user: UserSummary): Promise<BootstrapResponse> {
+  async bootstrap(userID: string, user: UserSummary): Promise<BootstrapResponse> {
     const counts = await this.database.one<{
       unread_count: string;
       update_available_count: string;
@@ -35,7 +35,7 @@ export class DesktopService {
         (SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL) AS unread_count,
         (SELECT count(*) FROM skills WHERE status = 'published' AND visibility_level = 'public_installable') AS update_available_count
       `,
-      [user.userID],
+      [userID],
     );
 
     return {

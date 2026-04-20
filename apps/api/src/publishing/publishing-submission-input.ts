@@ -6,6 +6,38 @@ import {
 } from '../common/p1-contracts';
 import type { SubmissionInput } from './publishing.types';
 
+const SKILL_CATEGORIES = ['开发', '测试', '文档', '设计', '运维', '安全', '集成', '自动化', '数据', '知识', '其他'] as const;
+const skillSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const semverPattern = /^\d+\.\d+\.\d+$/;
+const SKILL_TAGS = [
+  '代码',
+  '审查',
+  '重构',
+  '提示',
+  '规范',
+  '清单',
+  '文档',
+  '写作',
+  '测试',
+  '验收',
+  '前端',
+  '可访问',
+  '设计',
+  '运维',
+  '值班',
+  '事故',
+  '安全',
+  '权限',
+  '集成',
+  '适配',
+  '自动化',
+  '发布',
+  '数据',
+  '分析',
+  '入门',
+  '培训',
+] as const;
+
 export function parseSubmissionInput(body: Record<string, string | undefined>): SubmissionInput {
   const submissionType = (body.submissionType ?? 'publish') as SubmissionType;
   const skillID = (body.skillID ?? '').trim();
@@ -15,8 +47,8 @@ export function parseSubmissionInput(body: Record<string, string | undefined>): 
   const visibilityLevel = (body.visibilityLevel ?? 'private') as VisibilityLevel;
   const scopeType = (body.scopeType ?? 'current_department') as PublishScopeType;
   const changelog = (body.changelog ?? '').trim();
-  const category = (body.category ?? 'uncategorized').trim() || 'uncategorized';
-  const tags = parseStringList(body.tags);
+  const category = (body.category ?? '').trim();
+  const tags = uniqueStrings(parseStringList(body.tags));
   const compatibleTools = parseStringList(body.compatibleTools);
   const compatibleSystems = parseStringList(body.compatibleSystems);
   const selectedDepartmentIDs = parseStringList(body.selectedDepartmentIDs);
@@ -24,13 +56,22 @@ export function parseSubmissionInput(body: Record<string, string | undefined>): 
   if (!['publish', 'update', 'permission_change'].includes(submissionType) || !skillID || !displayName || !description) {
     throw new BadRequestException('validation_failed');
   }
+  if (!skillSlugPattern.test(skillID)) {
+    throw new BadRequestException('validation_failed');
+  }
   if (submissionType !== 'permission_change' && (!version || !changelog)) {
+    throw new BadRequestException('validation_failed');
+  }
+  if (submissionType !== 'permission_change' && !semverPattern.test(version)) {
     throw new BadRequestException('validation_failed');
   }
   if (!isVisibilityLevel(visibilityLevel) || !isScopeType(scopeType)) {
     throw new BadRequestException('validation_failed');
   }
   if (scopeType === 'selected_departments' && selectedDepartmentIDs.length === 0) {
+    throw new BadRequestException('validation_failed');
+  }
+  if (submissionType !== 'permission_change' && (!isSkillCategory(category) || !isSkillTagList(tags))) {
     throw new BadRequestException('validation_failed');
   }
 
@@ -44,7 +85,7 @@ export function parseSubmissionInput(body: Record<string, string | undefined>): 
     scopeType,
     selectedDepartmentIDs,
     changelog,
-    category,
+    category: submissionType === 'permission_change' ? category || '其他' : category,
     tags,
     compatibleTools,
     compatibleSystems,
@@ -77,6 +118,21 @@ function parseStringList(value: string | undefined): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function isSkillCategory(value: string): boolean {
+  return (SKILL_CATEGORIES as readonly string[]).includes(value);
+}
+
+function isSkillTagList(values: string[]): boolean {
+  if (values.length < 1 || values.length > 5) {
+    return false;
+  }
+  return values.every((value) => (SKILL_TAGS as readonly string[]).includes(value));
 }
 
 function isVisibilityLevel(value: string | null | undefined): value is VisibilityLevel {

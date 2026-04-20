@@ -68,7 +68,7 @@ export class ReviewerRoutingService {
         WHERE role = 'admin'
           AND status = 'active'
           AND department_id = $1
-        ORDER BY admin_level ASC, display_name ASC
+        ORDER BY admin_level ASC, username ASC
         `,
         [review.submitter_department_id]
       );
@@ -112,7 +112,7 @@ export class ReviewerRoutingService {
         AND u.admin_level = $1
         AND u.id <> $2
         AND d.parent_id IS NOT DISTINCT FROM $3
-      ORDER BY u.display_name ASC
+      ORDER BY u.username ASC
       `,
       [review.submitter_admin_level, review.submitter_id, review.submitter_parent_department_id]
     );
@@ -138,7 +138,7 @@ export class ReviewerRoutingService {
           AND u.admin_level = $1
           ${lessThanLevel ? "AND u.admin_level < $3" : ""}
           AND u.department_id = ANY($2::text[])
-        ORDER BY array_position($2::text[], u.department_id), u.display_name ASC
+      ORDER BY array_position($2::text[], u.department_id), u.username ASC
         `,
         lessThanLevel
           ? [adminLevel, ancestors.map((department) => department.department_id), lessThanLevel]
@@ -157,7 +157,7 @@ export class ReviewerRoutingService {
           AND u.status = 'active'
           AND u.admin_level < $1
           AND u.department_id = ANY($2::text[])
-        ORDER BY u.admin_level ASC, array_position($2::text[], u.department_id), u.display_name ASC
+      ORDER BY u.admin_level ASC, array_position($2::text[], u.department_id), u.username ASC
         `,
         [lessThanLevel, ancestors.map((department) => department.department_id)]
       );

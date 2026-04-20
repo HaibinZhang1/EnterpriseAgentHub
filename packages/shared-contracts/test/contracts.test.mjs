@@ -7,6 +7,8 @@ import {
   P1_LOCAL_COMMANDS,
   NotificationType,
   P1_API_ROUTES,
+  SKILL_CATEGORIES,
+  SKILL_TAGS,
   SkillStatus
 } from "../dist/index.js";
 
@@ -31,4 +33,12 @@ test("cut-slice route and Tauri command names are centralized", () => {
   assert.ok(LOCAL_COMMAND_NAMES.includes("install_skill_package"));
   assert.ok(LOCAL_COMMAND_NAMES.includes("enable_skill"));
   assert.ok(LOCAL_COMMAND_NAMES.includes("mark_offline_events_synced"));
+});
+
+test("skill taxonomy constants stay short and Chinese", () => {
+  assert.deepEqual(SKILL_CATEGORIES.slice(0, 3), ["开发", "测试", "文档"]);
+  assert.ok(SKILL_CATEGORIES.includes("其他"));
+  assert.ok(SKILL_TAGS.includes("代码"));
+  assert.ok(SKILL_TAGS.includes("培训"));
+  assert.ok(SKILL_TAGS.every((tag) => tag.length <= 3));
 });

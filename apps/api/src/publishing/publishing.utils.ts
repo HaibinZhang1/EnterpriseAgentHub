@@ -258,6 +258,19 @@ export function buildPrecheckItems(input: {
   return items;
 }
 
+export function hasBlockingPrecheckFailures(items: ReviewPrecheckItemDto[] | null | undefined): boolean {
+  const blockingIDs = new Set([
+    'skill-md',
+    'semver',
+    'version-order',
+    'size',
+    'file-count',
+    'visibility',
+    'scope',
+  ]);
+  return (items ?? []).some((item) => item.status === 'warn' && blockingIDs.has(item.id));
+}
+
 export function hasWarnings(items: ReviewPrecheckItemDto[]): boolean {
   return items.some((item) => item.status === 'warn');
 }

@@ -1612,7 +1612,7 @@ function communityStage() {
 
 function communitySwitcher() {
   const discoverItems = [
-    { id: "skills", label: "Skill", note: "6" },
+    { id: "skills", label: "Skills", note: "6" },
     { id: "mcp", label: "MCP", note: "预留" },
     { id: "plugins", label: "插件", note: "预留" }
   ];

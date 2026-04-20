@@ -7,6 +7,7 @@ import type {
   ScanTargetSummary,
   SkillSummary
 } from "../../domain/p1.ts";
+import { SKILL_CATEGORIES, SKILL_TAGS } from "../../domain/p1.ts";
 import { deriveDiscoveredLocalSkills } from "../../utils/discoveredLocalSkills.ts";
 import { guestNavigation } from "./workspaceTypes.ts";
 
@@ -17,11 +18,9 @@ export function deriveVisibleNavigation(input: {
   bootstrap: BootstrapContext;
 }) {
   const { authState, bootstrap } = input;
-  const visibleNavigation = (
-    authState === "authenticated" && bootstrap.connection.status === "connected" ? bootstrap.navigation : guestNavigation
-  ).filter((page) => page !== "notifications");
+  const visibleNavigation = (authState === "authenticated" ? bootstrap.navigation : guestNavigation).filter((page) => page !== "notifications");
 
-  if (authState !== "authenticated" || bootstrap.connection.status !== "connected") {
+  if (authState !== "authenticated") {
     return visibleNavigation;
   }
 
@@ -66,6 +65,7 @@ export function deriveMarketSkills(input: {
     if (skill.displayName.toLocaleLowerCase().includes(query)) score += 4;
     if (skill.skillID.toLocaleLowerCase().includes(query)) score += 3;
     if (skill.tags.some((tag) => tag.toLocaleLowerCase().includes(query))) score += 2;
+    if (skill.category.toLocaleLowerCase().includes(query)) score += 2;
     if (skill.description.toLocaleLowerCase().includes(query)) score += 1;
     return score;
   }
@@ -80,6 +80,7 @@ export function deriveMarketSkills(input: {
       skill.displayName.toLocaleLowerCase().includes(query) ||
       skill.description.toLocaleLowerCase().includes(query) ||
       skill.skillID.toLocaleLowerCase().includes(query) ||
+      skill.category.toLocaleLowerCase().includes(query) ||
       skill.tags.some((tag) => tag.toLocaleLowerCase().includes(query)) ||
       skill.authorDepartment?.toLocaleLowerCase().includes(query) ||
       skill.authorName?.toLocaleLowerCase().includes(query);
@@ -87,6 +88,7 @@ export function deriveMarketSkills(input: {
     const matchesTool = filters.compatibleTool === "all" || skill.compatibleTools.includes(filters.compatibleTool);
     const matchesAccess = filters.accessScope === "include_public" || skill.detailAccess === "full";
     const matchesCategory = filters.category === "all" || skill.category === filters.category;
+    const matchesTags = filters.tags.length === 0 || filters.tags.some((tag) => skill.tags.includes(tag));
     const matchesRisk = filters.riskLevel === "all" || skill.riskLevel === filters.riskLevel;
     const matchesPublishedWithin =
       publishedWindowDays === 0 || new Date(skill.publishedAt).getTime() >= Date.now() - publishedWindowDays * 24 * 60 * 60 * 1000;
@@ -101,6 +103,7 @@ export function deriveMarketSkills(input: {
       matchesEnabled &&
       matchesAccess &&
       matchesCategory &&
+      matchesTags &&
       matchesRisk &&
       matchesPublishedWithin &&
       matchesUpdatedWithin
@@ -166,14 +169,16 @@ export function deriveWorkspaceState(input: {
   const visibleNavigation = deriveVisibleNavigation({ authState, bootstrap });
   const departmentsFilter = [...new Set(skills.map((skill) => skill.authorDepartment).filter(Boolean))] as string[];
   const compatibleTools = [...new Set(skills.flatMap((skill) => skill.compatibleTools))];
-  const categories = [...new Set(skills.map((skill) => skill.category).filter(Boolean))];
+  const categories = [...SKILL_CATEGORIES];
+  const tags = [...SKILL_TAGS];
   const isAdminConnected =
     authState === "authenticated" &&
-    bootstrap.connection.status === "connected" &&
+    bootstrap.user.role === "admin" &&
     adminNavigationPages.some((page) => bootstrap.menuPermissions.includes(page));
 
   return {
     categories,
+    tags,
     compatibleTools,
     counts,
     departmentsFilter,

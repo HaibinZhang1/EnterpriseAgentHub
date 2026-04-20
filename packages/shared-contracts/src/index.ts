@@ -5,6 +5,51 @@ export type UserID = string;
 export type DepartmentID = string;
 export type DeviceID = string;
 
+export const SKILL_CATEGORIES = [
+  "开发",
+  "测试",
+  "文档",
+  "设计",
+  "运维",
+  "安全",
+  "集成",
+  "自动化",
+  "数据",
+  "知识",
+  "其他"
+] as const;
+export type SkillCategory = (typeof SKILL_CATEGORIES)[number];
+
+export const SKILL_TAGS = [
+  "代码",
+  "审查",
+  "重构",
+  "提示",
+  "规范",
+  "清单",
+  "文档",
+  "写作",
+  "测试",
+  "验收",
+  "前端",
+  "可访问",
+  "设计",
+  "运维",
+  "值班",
+  "事故",
+  "安全",
+  "权限",
+  "集成",
+  "适配",
+  "自动化",
+  "发布",
+  "数据",
+  "分析",
+  "入门",
+  "培训"
+] as const;
+export type SkillTag = (typeof SKILL_TAGS)[number];
+
 export const SkillStatus = {
   Published: "published",
   Delisted: "delisted",
@@ -264,8 +309,8 @@ export interface ApiErrorResponse<TDetail = unknown> {
 }
 
 export interface CurrentUser {
-  readonly userID: UserID;
-  readonly displayName: string;
+  readonly username: string;
+  readonly phoneNumber: string;
   readonly role: string;
   readonly adminLevel?: number;
   readonly departmentID: DepartmentID;
@@ -306,7 +351,7 @@ export interface DesktopBootstrapResponse {
 }
 
 export interface LoginRequest {
-  readonly username: string;
+  readonly phoneNumber: string;
   readonly password: string;
 }
 
@@ -341,6 +386,27 @@ export interface SkillSummary {
   readonly starCount: number;
   readonly downloadCount: number;
   readonly riskLevel?: RiskLevel;
+}
+
+export const SkillLeaderboardKind = {
+  Hot: "hot",
+  Stars: "stars",
+  Downloads: "downloads"
+} as const;
+export type SkillLeaderboardKind = (typeof SkillLeaderboardKind)[keyof typeof SkillLeaderboardKind];
+
+export interface SkillLeaderboardItem extends SkillSummary {
+  readonly recentStarCount: number;
+  readonly recentDownloadCount: number;
+  readonly hotScore: number;
+}
+
+export interface SkillLeaderboardsResponse {
+  readonly generatedAt: ISODateTimeString;
+  readonly windowDays: number;
+  readonly hot: readonly SkillLeaderboardItem[];
+  readonly stars: readonly SkillLeaderboardItem[];
+  readonly downloads: readonly SkillLeaderboardItem[];
 }
 
 export interface SkillVersionSummary {
@@ -385,6 +451,7 @@ export interface ListSkillsQuery extends PaginationQuery {
   readonly enabled?: boolean;
   readonly accessScope?: AccessScope;
   readonly category?: string;
+  readonly tags?: readonly string[];
   readonly riskLevel?: RiskLevel;
   readonly sort?: SortOption;
 }
@@ -464,9 +531,8 @@ export interface DepartmentNode {
 }
 
 export interface AdminUser {
-  readonly userID: UserID;
   readonly username: string;
-  readonly displayName: string;
+  readonly phoneNumber: string;
   readonly departmentID: DepartmentID;
   readonly departmentName: string;
   readonly departmentPath: string;
@@ -543,6 +609,8 @@ export interface PackageFileContent {
 
 export interface ReviewDetail extends ReviewItem {
   readonly description: string;
+  readonly category: string;
+  readonly tags: readonly string[];
   readonly reviewSummary?: string;
   readonly currentVersion?: SemVerString;
   readonly currentVisibilityLevel?: VisibilityLevel;
@@ -569,6 +637,8 @@ export interface PublisherSkillSummary {
   readonly skillID: SkillID;
   readonly displayName: string;
   readonly publishedSkillExists: boolean;
+  readonly category?: string | null;
+  readonly tags?: readonly string[] | null;
   readonly currentVersion?: SemVerString | null;
   readonly currentStatus?: SkillStatus | null;
   readonly currentVisibilityLevel?: VisibilityLevel | null;
@@ -598,6 +668,8 @@ export interface PublisherSubmissionDetail {
   readonly displayName: string;
   readonly description: string;
   readonly changelog: string;
+  readonly category: string;
+  readonly tags: readonly string[];
   readonly version: SemVerString;
   readonly currentVersion?: SemVerString | null;
   readonly visibilityLevel: VisibilityLevel;
@@ -664,6 +736,7 @@ export interface LocalSkillInstall {
   readonly localVersion: SemVerString;
   readonly localHash: string;
   readonly sourcePackageHash: `sha256:${string}`;
+  readonly sourceType: "remote" | "local_import";
   readonly installedAt: ISODateTimeString;
   readonly updatedAt: ISODateTimeString;
   readonly localStatus: LocalStatus;
@@ -693,6 +766,8 @@ export interface ProjectConfig {
   readonly displayName: string;
   readonly projectPath: string;
   readonly skillsPath: string;
+  readonly projectPathStatus?: "valid" | "missing" | "invalid" | "unwritable";
+  readonly projectPathStatusReason?: string | null;
   readonly enabled: boolean;
   readonly createdAt: ISODateTimeString;
   readonly updatedAt: ISODateTimeString;
@@ -708,6 +783,10 @@ export interface ScanFinding {
   readonly targetPath: string;
   readonly relativePath: string;
   readonly checksum?: string | null;
+  readonly canImport: boolean;
+  readonly importDisplayName?: string | null;
+  readonly importDescription?: string | null;
+  readonly importVersion?: SemVerString | string | null;
   readonly message: string;
 }
 
@@ -782,22 +861,33 @@ export interface UpdateSkillPackageRequest {
   readonly downloadTicket: DownloadTicketResponse;
 }
 
+export interface ImportLocalSkillRequest {
+  readonly input: {
+    readonly targetType: TargetType;
+    readonly targetID: string;
+    readonly relativePath: string;
+    readonly skillID: SkillID;
+    readonly conflictStrategy: "rename" | "replace";
+  };
+}
+
 export interface EnableSkillRequest {
-  readonly skillID: SkillID;
+  readonly skillId: SkillID;
   readonly version: SemVerString;
   readonly targetType: TargetType;
-  readonly targetID: string;
+  readonly targetId: string;
   readonly preferredMode?: RequestedMode;
+  readonly allowOverwrite?: boolean;
 }
 
 export interface DisableSkillRequest {
-  readonly skillID: SkillID;
+  readonly skillId: SkillID;
   readonly targetType: TargetType;
-  readonly targetID: string;
+  readonly targetId: string;
 }
 
 export interface UninstallSkillRequest {
-  readonly skillID: SkillID;
+  readonly skillId: SkillID;
 }
 
 export interface UninstallSkillResponse {
@@ -808,7 +898,7 @@ export interface UninstallSkillResponse {
 }
 
 export interface MarkOfflineEventsSyncedRequest {
-  readonly eventIDs: readonly string[];
+  readonly eventIds: readonly string[];
 }
 
 export interface MarkOfflineEventsSyncedResponse {
@@ -827,6 +917,7 @@ export interface LocalCommandRequestMap {
   readonly validate_target_path: ValidateTargetPathRequest;
   readonly install_skill_package: InstallSkillPackageRequest;
   readonly update_skill_package: UpdateSkillPackageRequest;
+  readonly import_local_skill: ImportLocalSkillRequest;
   readonly enable_skill: EnableSkillRequest;
   readonly disable_skill: DisableSkillRequest;
   readonly uninstall_skill: UninstallSkillRequest;
@@ -834,7 +925,7 @@ export interface LocalCommandRequestMap {
     readonly notifications: readonly LocalNotification[];
   };
   readonly mark_local_notifications_read: {
-    readonly notificationIDs: readonly string[];
+    readonly notificationIds: readonly string[];
     readonly all: boolean;
   };
   readonly mark_offline_events_synced: MarkOfflineEventsSyncedRequest;
@@ -851,6 +942,7 @@ export interface LocalCommandResponseMap {
   readonly validate_target_path: ValidateTargetPathResponse;
   readonly install_skill_package: LocalSkillInstall;
   readonly update_skill_package: LocalSkillInstall;
+  readonly import_local_skill: LocalSkillInstall;
   readonly enable_skill: EnabledTarget;
   readonly disable_skill: EnabledTarget;
   readonly uninstall_skill: UninstallSkillResponse;
@@ -872,6 +964,7 @@ export const P1_LOCAL_COMMANDS = {
   validateTargetPath: "validate_target_path",
   installSkillPackage: "install_skill_package",
   updateSkillPackage: "update_skill_package",
+  importLocalSkill: "import_local_skill",
   enableSkill: "enable_skill",
   disableSkill: "disable_skill",
   uninstallSkill: "uninstall_skill",
@@ -891,6 +984,7 @@ export const P1_API_ROUTES = {
   desktopBootstrap: "/desktop/bootstrap",
   desktopLocalEvents: "/desktop/local-events",
   skills: "/skills",
+  skillLeaderboards: "/skills/leaderboards",
   skillDetail: "/skills/:skillID",
   skillDownloadTicket: "/skills/:skillID/download-ticket",
   skillStar: "/skills/:skillID/star",
@@ -900,9 +994,9 @@ export const P1_API_ROUTES = {
   adminDepartments: "/admin/departments",
   adminDepartmentDetail: "/admin/departments/:departmentID",
   adminUsers: "/admin/users",
-  adminUserDetail: "/admin/users/:targetUserID",
-  adminUserFreeze: "/admin/users/:targetUserID/freeze",
-  adminUserUnfreeze: "/admin/users/:targetUserID/unfreeze",
+  adminUserDetail: "/admin/users/:phoneNumber",
+  adminUserFreeze: "/admin/users/:phoneNumber/freeze",
+  adminUserUnfreeze: "/admin/users/:phoneNumber/unfreeze",
   adminSkills: "/admin/skills",
   adminSkillDelist: "/admin/skills/:skillID/delist",
   adminSkillRelist: "/admin/skills/:skillID/relist",
@@ -940,6 +1034,7 @@ export type LocalEventDto = LocalEvent;
 export type DepartmentNodeDto = DepartmentNode;
 export type AdminUserDto = AdminUser;
 export type AdminSkillDto = AdminSkill;
+export type SkillLeaderboardsResponseDto = SkillLeaderboardsResponse;
 export type ReviewItemDto = ReviewItem;
 export type ReviewHistoryDto = ReviewHistory;
 export type ReviewPrecheckItemDto = ReviewPrecheckItem;

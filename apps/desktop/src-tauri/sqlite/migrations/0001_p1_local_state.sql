@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS local_skill_installs (
   local_version TEXT NOT NULL,
   local_hash TEXT NOT NULL,
   source_package_hash TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'remote' CHECK (source_type IN ('remote', 'local_import')),
   central_store_path TEXT NOT NULL,
   local_status TEXT NOT NULL CHECK (local_status IN ('installed', 'enabled', 'partially_failed')),
   has_update INTEGER NOT NULL DEFAULT 0 CHECK (has_update IN (0, 1)),

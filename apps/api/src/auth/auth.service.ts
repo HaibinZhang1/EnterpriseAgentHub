@@ -5,9 +5,10 @@ import { DatabaseService } from '../database/database.service';
 import { PermissionResolverService } from './permission-resolver.service';
 import { verifyPassword } from './password';
 import { P1_TOKEN_PREFIX } from './constants';
+import { normalizePhoneNumber } from './phone-number';
 
 export interface LoginRequest {
-  username?: string;
+  phoneNumber?: string;
   password?: string;
 }
 
@@ -22,12 +23,15 @@ export interface LoginResponse {
 
 export interface AuthenticatedSession {
   sessionID: string;
+  userID: string;
   user: UserSummary;
   menuPermissions: MenuPermission[];
 }
 
 interface UserRow {
   id: string;
+  username: string;
+  phone_number: string;
   password_hash: string;
   display_name: string;
   role: 'normal_user' | 'admin';
@@ -46,22 +50,23 @@ export class AuthService {
   ) {}
 
   async login(request: LoginRequest): Promise<LoginResponse> {
-    if (!request.username || !request.password) {
-      throw new UnauthorizedException('用户名或密码不能为空');
+    if (!request.phoneNumber || !request.password) {
+      throw new UnauthorizedException('手机号或密码不能为空');
     }
+    const phoneNumber = normalizePhoneNumber(request.phoneNumber);
 
     const user = await this.database.one<UserRow>(
       `
-      SELECT u.id, u.password_hash, u.display_name, u.role, u.admin_level, u.department_id, d.name AS department_name
+      SELECT u.id, u.username, u.phone_number, u.password_hash, u.display_name, u.role, u.admin_level, u.department_id, d.name AS department_name
       FROM users u
       JOIN departments d ON d.id = u.department_id
-      WHERE u.username = $1 AND u.status = 'active'
+      WHERE u.phone_number = $1 AND u.status = 'active'
       `,
-      [request.username],
+      [phoneNumber],
     );
 
     if (!user || !verifyPassword(request.password, user.password_hash)) {
-      throw new UnauthorizedException('用户名或密码错误');
+      throw new UnauthorizedException('手机号或密码错误');
     }
 
     const session = await this.createSession(user.id);
@@ -89,6 +94,8 @@ export class AuthService {
       session_id: string;
       expires_at: Date;
       user_id: string;
+      username: string;
+      phone_number: string;
       display_name: string;
       role: 'normal_user' | 'admin';
       admin_level: number | null;
@@ -101,6 +108,8 @@ export class AuthService {
         s.id AS session_id,
         s.expires_at,
         u.id AS user_id,
+        u.username,
+        u.phone_number,
         u.display_name,
         u.role,
         u.admin_level,
@@ -122,8 +131,8 @@ export class AuthService {
     }
 
     const user: UserSummary = {
-      userID: session.user_id,
-      displayName: session.display_name,
+      username: session.username,
+      phoneNumber: session.phone_number,
       role: session.role,
       adminLevel: session.admin_level ?? undefined,
       departmentID: session.department_id,
@@ -133,6 +142,7 @@ export class AuthService {
 
     return {
       sessionID: session.session_id,
+      userID: session.user_id,
       user,
       menuPermissions: this.permissionResolver.menuPermissionsFor(user),
     };
@@ -158,8 +168,8 @@ export class AuthService {
 
   private toUserSummary(row: UserRow): UserSummary {
     return {
-      userID: row.id,
-      displayName: row.display_name,
+      username: row.username,
+      phoneNumber: row.phone_number,
       role: row.role,
       adminLevel: row.admin_level ?? undefined,
       departmentID: row.department_id,

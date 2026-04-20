@@ -78,17 +78,32 @@ export function useWorkspacePublisherActions(input: {
     }
   }, [selectedPublisherSubmissionID, setSelectedPublisherSubmission]);
 
+  const performPublisherSubmission = useCallback(
+    async (formData: FormData) => {
+      const submission = await p1Client.submitPublisherSubmission(formData);
+      setSelectedPublisherSubmission(submission);
+      setSelectedPublisherSubmissionID(submission.submissionID);
+      setPublisherSkills((current) => upsertPublisherSkillSummary(current, submission));
+      await refreshPublisherData();
+    },
+    [refreshPublisherData, setPublisherSkills, setSelectedPublisherSubmission, setSelectedPublisherSubmissionID]
+  );
+
   const submitPublisherSubmission = useCallback(
     async (formData: FormData) => {
-      requireAuthenticatedAction("publisher", async () => {
-        const submission = await p1Client.submitPublisherSubmission(formData);
-        setSelectedPublisherSubmission(submission);
-        setSelectedPublisherSubmissionID(submission.submissionID);
-        setPublisherSkills((current) => upsertPublisherSkillSummary(current, submission));
-        await refreshPublisherData();
-      });
+      if (authState !== "authenticated") {
+        requireAuthenticatedAction("publisher", () => performPublisherSubmission(formData));
+        return false;
+      }
+      try {
+        await performPublisherSubmission(formData);
+        return true;
+      } catch (error) {
+        await handleRemoteError(error, { reopenLogin: true });
+        return false;
+      }
     },
-    [refreshPublisherData, requireAuthenticatedAction, setPublisherSkills, setSelectedPublisherSubmission, setSelectedPublisherSubmissionID]
+    [authState, handleRemoteError, performPublisherSubmission, requireAuthenticatedAction]
   );
 
   const withdrawPublisherSubmission = useCallback(

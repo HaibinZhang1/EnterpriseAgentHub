@@ -1,9 +1,11 @@
 import { useCallback, useState } from "react";
 import type { DesktopModalState, SkillSummary, TargetDraft } from "../../domain/p1.ts";
+import type { DisplayLanguage } from "../../ui/desktopShared.tsx";
 import type { P1WorkspaceState } from "../useP1Workspace.ts";
 import { buildTargetDrafts, findSkillScanFinding } from "./installedSkillSelectors.ts";
 
 export function useTargetsModalState(input: {
+  language: DisplayLanguage;
   workspace: P1WorkspaceState;
   closeModal: () => void;
   setModal: (modal: DesktopModalState) => void;
@@ -18,20 +20,20 @@ export function useTargetsModalState(input: {
   }) => void;
   setFlash: (flash: { tone: "info" | "warning" | "danger" | "success"; title: string; body: string } | null) => void;
 }) {
-  const { workspace, closeModal, setModal, setConfirmModal, setFlash } = input;
+  const { language, workspace, closeModal, setModal, setConfirmModal, setFlash } = input;
   const [targetDrafts, setTargetDrafts] = useState<TargetDraft[]>([]);
 
   const openTargetsModal = useCallback((skill: SkillSummary) => {
-    setTargetDrafts(buildTargetDrafts(skill, workspace));
+    setTargetDrafts(buildTargetDrafts(skill, workspace, language));
     setModal({ type: "targets", skillID: skill.skillID });
-  }, [setModal, workspace]);
+  }, [language, setModal, workspace]);
 
   const toggleTargetDraft = useCallback((key: string) => {
     setTargetDrafts((current) => current.map((draft) => (draft.key === key ? { ...draft, selected: !draft.selected } : draft)));
   }, []);
 
   const applyTargetDrafts = useCallback(async (skill: SkillSummary) => {
-    const sourceDrafts = buildTargetDrafts(skill, workspace);
+    const sourceDrafts = buildTargetDrafts(skill, workspace, language);
     const changedDrafts = targetDrafts.filter((draft) => {
       const source = sourceDrafts.find((item) => item.key === draft.key);
       return source && source.selected !== draft.selected;
@@ -55,20 +57,33 @@ export function useTargetsModalState(input: {
     }
 
     const applyChanges = async (overwriteKeys = new Set<string>()) => {
-      for (const draft of changedDrafts) {
-        if (!draft.selected) {
-          await workspace.disableSkill(skill.skillID, draft.targetID, draft.targetType);
-          continue;
+      try {
+        setModal({ type: "none" });
+        for (const draft of changedDrafts) {
+          if (!draft.selected) {
+            await workspace.disableSkill(skill.skillID, draft.targetID, draft.targetType);
+            continue;
+          }
+          await workspace.enableSkill(
+            skill.skillID,
+            draft.targetType,
+            draft.targetID,
+            "symlink",
+            overwriteKeys.has(draft.key)
+          );
         }
-        await workspace.enableSkill(
-          skill.skillID,
-          draft.targetType,
-          draft.targetID,
-          "symlink",
-          overwriteKeys.has(draft.key)
-        );
+        setFlash({
+          tone: "success",
+          title: "启用范围已应用",
+          body: `${skill.displayName} 的目标状态已完成同步。`
+        });
+      } catch (error) {
+        setFlash({
+          tone: "danger",
+          title: "启用范围未完成",
+          body: error instanceof Error ? error.message : "本地命令执行失败，请查看进度提示后重试。"
+        });
       }
-      closeModal();
     };
 
     const conflictingDrafts = changedDrafts.filter((draft) => {
@@ -99,7 +114,7 @@ export function useTargetsModalState(input: {
     }
 
     await applyChanges();
-  }, [closeModal, setConfirmModal, setFlash, setModal, targetDrafts, workspace]);
+  }, [closeModal, language, setConfirmModal, setFlash, setModal, targetDrafts, workspace]);
 
   return {
     targetDrafts,

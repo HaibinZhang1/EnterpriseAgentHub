@@ -15,6 +15,7 @@ pub struct InstallSkillPackageRequest {
     pub downloaded_package_dir: PathBuf,
     pub central_store_root: PathBuf,
     pub source_package_hash: String,
+    pub source_type: String,
     pub installed_at: String,
 }
 
@@ -26,6 +27,7 @@ pub struct UpdateSkillPackageRequest {
     pub downloaded_package_dir: PathBuf,
     pub central_store_root: PathBuf,
     pub source_package_hash: String,
+    pub source_type: String,
     pub updated_at: String,
 }
 
@@ -53,6 +55,7 @@ pub fn install_skill_package(
         installed,
         request.display_name,
         request.source_package_hash,
+        request.source_type,
         request.installed_at,
     ))
 }
@@ -72,6 +75,7 @@ pub fn update_skill_package(
         installed,
         request.display_name,
         request.source_package_hash,
+        request.source_type,
         request.updated_at,
     ))
 }
@@ -114,6 +118,7 @@ fn local_install_from_package(
     installed: InstalledPackage,
     display_name: String,
     source_package_hash: String,
+    source_type: String,
     timestamp: String,
 ) -> LocalSkillInstall {
     LocalSkillInstall {
@@ -122,6 +127,7 @@ fn local_install_from_package(
         local_version: installed.version,
         local_hash: format!("sha256:{}", installed.package_hash),
         source_package_hash,
+        source_type,
         installed_at: timestamp.clone(),
         updated_at: timestamp,
         local_status: LocalStatus::Installed,

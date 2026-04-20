@@ -1,4 +1,4 @@
-import type { DownloadTicket, MarketFilters, SkillSummary } from "../../domain/p1.ts";
+import type { DownloadTicket, MarketFilters, SkillLeaderboardsResponse, SkillSummary } from "../../domain/p1.ts";
 import { P1_API_ROUTES } from "@enterprise-agent-hub/shared-contracts";
 import { requestJSON, resolveAPIURL, routePath } from "./core.ts";
 import type { ApiPage, ApiSkill } from "./shared.ts";
@@ -9,6 +9,16 @@ export function createMarketClient() {
     async listSkills(filters: MarketFilters): Promise<SkillSummary[]> {
       const response = await requestJSON<ApiPage<ApiSkill>>(`${P1_API_ROUTES.skills}?${buildSkillListQuery(filters).toString()}`);
       return response.items.map(normalizeSkill);
+    },
+
+    async listSkillLeaderboards(): Promise<SkillLeaderboardsResponse> {
+      const response = await requestJSON<SkillLeaderboardsResponse>(P1_API_ROUTES.skillLeaderboards);
+      return {
+        ...response,
+        hot: response.hot.map((skill) => normalizeSkill(skill) as SkillLeaderboardsResponse["hot"][number]),
+        stars: response.stars.map((skill) => normalizeSkill(skill) as SkillLeaderboardsResponse["stars"][number]),
+        downloads: response.downloads.map((skill) => normalizeSkill(skill) as SkillLeaderboardsResponse["downloads"][number])
+      };
     },
 
     async getSkill(skillID: string): Promise<SkillSummary> {

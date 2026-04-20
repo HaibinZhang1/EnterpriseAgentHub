@@ -16,11 +16,12 @@ SET
   level = EXCLUDED.level,
   status = EXCLUDED.status;
 
-INSERT INTO users (id, username, password_hash, display_name, department_id, role, admin_level, status)
+INSERT INTO users (id, username, phone_number, password_hash, display_name, department_id, role, admin_level, status)
 VALUES
   (
     'u_001',
-    'demo',
+    '张三',
+    '13800000001',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '张三',
     'dept_frontend',
@@ -30,7 +31,8 @@ VALUES
   ),
   (
     'u_admin_l1',
-    'superadmin',
+    '系统管理员',
+    '13800000002',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '系统管理员',
     'dept_company',
@@ -40,7 +42,8 @@ VALUES
   ),
   (
     'u_admin_l2_eng',
-    'engadmin',
+    '技术部管理员',
+    '13800000003',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '技术部管理员',
     'dept_engineering',
@@ -50,7 +53,8 @@ VALUES
   ),
   (
     'u_admin_l3_front',
-    'frontadmin',
+    '前端组管理员',
+    '13800000004',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '前端组管理员',
     'dept_frontend',
@@ -60,7 +64,8 @@ VALUES
   ),
   (
     'u_author_frontend',
-    'author_frontend',
+    '李四',
+    '13800000005',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '李四',
     'dept_frontend',
@@ -70,7 +75,8 @@ VALUES
   ),
   (
     'u_author_design',
-    'author_design',
+    '王五',
+    '13800000006',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '王五',
     'dept_design',
@@ -80,7 +86,8 @@ VALUES
   ),
   (
     'u_author_ops',
-    'author_ops',
+    '赵六',
+    '13800000007',
     'scrypt:0123456789abcdef0123456789abcdef:56c7e535798d6be9224ce9fa07725311fff0d48a6648015e48cbc7227480d75236e0d5c5a429107908b31aba707741dee997c05bea3ff713c52adcd567f37204',
     '赵六',
     'dept_ops',
@@ -91,6 +98,7 @@ VALUES
 ON CONFLICT (id) DO UPDATE
 SET
   username = EXCLUDED.username,
+  phone_number = EXCLUDED.phone_number,
   password_hash = EXCLUDED.password_hash,
   display_name = EXCLUDED.display_name,
   department_id = EXCLUDED.department_id,
@@ -101,12 +109,12 @@ SET
 WITH upsert_skill AS (
   INSERT INTO skills (skill_id, display_name, description, author_id, department_id, status, visibility_level, category)
   VALUES
-    ('codex-review-helper', 'Codex Review Helper', '为 Codex 项目提供代码审查提示和提交前检查清单。', 'u_author_frontend', 'dept_frontend', 'published', 'public_installable', 'engineering'),
-    ('design-guideline-lite', 'Design Guideline Lite', '企业 UI 规范摘要，详情仅对授权部门开放。', 'u_author_design', 'dept_design', 'published', 'summary_visible', 'design'),
-    ('legacy-dept-runbook', 'Legacy Department Runbook', '已下架的部门运行手册，验证不可安装场景。', 'u_author_ops', 'dept_ops', 'delisted', 'detail_visible', 'operations'),
-    ('prompt-lint-checklist', 'Prompt Lint Checklist', '提交前检查 prompt 结构、变量占位和禁用词，适合做发布前自检。', 'u_author_frontend', 'dept_frontend', 'published', 'public_installable', 'engineering'),
-    ('frontend-a11y-guard', 'Frontend A11y Guard', '为前端页面提供可访问性检查提示、回归清单和常见问题修复建议。', 'u_author_design', 'dept_design', 'published', 'detail_visible', 'design'),
-    ('ops-oncall-companion', 'Ops Oncall Companion', '面向值班场景的排障步骤、交接模板和事故回顾提示。', 'u_author_ops', 'dept_ops', 'published', 'public_installable', 'operations')
+    ('codex-review-helper', 'Codex Review Helper', '为 Codex 项目提供代码审查提示和提交前检查清单。', 'u_author_frontend', 'dept_frontend', 'published', 'public_installable', '开发'),
+    ('design-guideline-lite', 'Design Guideline Lite', '企业 UI 规范摘要，详情仅对授权部门开放。', 'u_author_design', 'dept_design', 'published', 'summary_visible', '设计'),
+    ('legacy-dept-runbook', 'Legacy Department Runbook', '已下架的部门运行手册，验证不可安装场景。', 'u_author_ops', 'dept_ops', 'delisted', 'detail_visible', '运维'),
+    ('prompt-lint-checklist', 'Prompt Lint Checklist', '提交前检查 prompt 结构、变量占位和禁用词，适合做发布前自检。', 'u_author_frontend', 'dept_frontend', 'published', 'public_installable', '开发'),
+    ('frontend-a11y-guard', 'Frontend A11y Guard', '为前端页面提供可访问性检查提示、回归清单和常见问题修复建议。', 'u_author_design', 'dept_design', 'published', 'detail_visible', '设计'),
+    ('ops-oncall-companion', 'Ops Oncall Companion', '面向值班场景的排障步骤、交接模板和事故回顾提示。', 'u_author_ops', 'dept_ops', 'published', 'public_installable', '运维')
   ON CONFLICT (skill_id) DO UPDATE
   SET
     display_name = EXCLUDED.display_name,
@@ -161,17 +169,30 @@ JOIN skill_versions v ON v.version = dv.version
 WHERE s.skill_id = dv.skill_id
   AND v.skill_id = s.id;
 
+DELETE FROM skill_tags
+WHERE skill_id IN (
+  SELECT id FROM skills
+  WHERE skill_id IN (
+    'codex-review-helper',
+    'design-guideline-lite',
+    'legacy-dept-runbook',
+    'prompt-lint-checklist',
+    'frontend-a11y-guard',
+    'ops-oncall-companion'
+  )
+);
+
 INSERT INTO skill_tags (skill_id, tag)
 SELECT s.id, tag
 FROM skills s
 CROSS JOIN LATERAL unnest(
   CASE s.skill_id
-    WHEN 'codex-review-helper' THEN ARRAY['codex', 'review', 'quality']
-    WHEN 'design-guideline-lite' THEN ARRAY['design', 'restricted']
-    WHEN 'prompt-lint-checklist' THEN ARRAY['prompt', 'lint', 'quality']
-    WHEN 'frontend-a11y-guard' THEN ARRAY['frontend', 'accessibility', 'design']
-    WHEN 'ops-oncall-companion' THEN ARRAY['ops', 'oncall', 'incident']
-    ELSE ARRAY['ops', 'delisted']
+    WHEN 'codex-review-helper' THEN ARRAY['代码', '审查', '清单']
+    WHEN 'design-guideline-lite' THEN ARRAY['设计', '规范']
+    WHEN 'prompt-lint-checklist' THEN ARRAY['提示', '规范', '清单']
+    WHEN 'frontend-a11y-guard' THEN ARRAY['前端', '可访问', '设计']
+    WHEN 'ops-oncall-companion' THEN ARRAY['运维', '值班', '事故']
+    ELSE ARRAY['运维', '清单']
   END
 ) AS tag
 ON CONFLICT DO NOTHING;

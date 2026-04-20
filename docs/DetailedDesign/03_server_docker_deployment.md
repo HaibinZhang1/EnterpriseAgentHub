@@ -69,7 +69,7 @@ EnterpriseAgentHub/
 | `postgres` | 固定版本官方镜像或企业镜像 | 主业务数据库 | `postgres_data` volume。 |
 | `redis` | 固定版本官方镜像或企业镜像 | BullMQ 队列 | `redis_data` volume，可按运维要求选择持久化策略。 |
 | `minio` | 固定版本官方镜像或企业镜像 | Skill 包和资源对象存储 | `minio_data` volume。 |
-| `minio-init` | MinIO client 镜像 | 创建 bucket 和基础 policy | 一次性任务，可幂等。 |
+| `minio-init` | MinIO client 镜像 | 创建 bucket 和基础 policy，至少包含 `skill-packages`、`skill-assets`、`client-updates` | 一次性任务，可幂等。 |
 | `nginx` | 可选 | 内网反向代理与 TLS 终止 | 配置挂载。 |
 
 第一阶段可以先不引入 Nginx，由 API 直接暴露内网端口；若企业内网要求统一 TLS、审计或域名，则启用 `nginx` 服务。
@@ -204,7 +204,7 @@ API 镜像：
 - `GET /health` 返回 API、PostgreSQL、Redis、MinIO 均可用。
 - `api-migrate` 退出码为 0。
 - `api-seed` 退出码为 0，重复执行不会创建重复数据。
-- MinIO 中存在 `skill-packages` 和 `skill-assets` bucket。
+- MinIO 中存在 `skill-packages`、`skill-assets` 和 `client-updates` bucket。
 - Desktop 能通过内网 API 地址完成登录和 `/desktop/bootstrap`。
 
 低版本服务器专项验收：
@@ -219,3 +219,4 @@ API 镜像：
 - 当前版本-T03 的迁移和 seed 命令必须能以一次性容器方式运行。
 - 当前版本-T10 的交付物必须包含在线部署和离线部署两种说明。
 - 若目标服务器系统版本过低，当前版本 验收应先运行 `server-check.sh`，检查失败时不进入后续部署。
+- 客户端在线升级的 Linux Docker 更新包推送流程见 [客户端在线升级详细设计](06_client_online_upgrade.md)，服务端部署脚本只负责基础服务启动，不在生产服务器构建客户端安装包。

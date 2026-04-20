@@ -16,6 +16,7 @@ export const defaultFilters: MarketFilters = {
   enabled: "all",
   accessScope: "include_public",
   category: "all",
+  tags: [],
   riskLevel: "all",
   publishedWithin: "all",
   updatedWithin: "all",

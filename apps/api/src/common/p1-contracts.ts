@@ -23,6 +23,8 @@ import type {
   ReviewStatus as SharedReviewStatus,
   ReviewType as SharedReviewType,
   SkillDetail as SharedSkillDetail,
+  SkillLeaderboardItem as SharedSkillLeaderboardItem,
+  SkillLeaderboardsResponse as SharedSkillLeaderboardsResponse,
   SkillStatus as SharedSkillStatus,
   SkillSummary as SharedSkillSummary,
   UserSummary as SharedUserSummary,
@@ -74,6 +76,8 @@ export type PageResponse<T> = MutableDeep<SharedPageResponse<T>>;
 export type UserSummary = MutableDeep<SharedUserSummary>;
 export type SkillSummary = MutableDeep<SharedSkillSummary>;
 export type SkillDetail = MutableDeep<SharedSkillDetail>;
+export type SkillLeaderboardItem = MutableDeep<SharedSkillLeaderboardItem>;
+export type SkillLeaderboardsResponse = MutableDeep<SharedSkillLeaderboardsResponse>;
 export type DownloadTicketResponse = MutableDeep<SharedDownloadTicketResponse>;
 export type NotificationDto = MutableDeep<SharedNotificationDto>;
 export type LocalEventDto = MutableDeep<SharedLocalEventDto>;

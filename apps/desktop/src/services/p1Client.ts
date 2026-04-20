@@ -12,6 +12,7 @@ import type {
   PublisherSubmissionDetail,
   ReviewDetail,
   ReviewItem,
+  SkillLeaderboardsResponse,
   SkillSummary
 } from "../domain/p1.ts";
 import { createAdminClient } from "./p1Client/admin.ts";
@@ -31,10 +32,11 @@ export interface P1Client {
   hasStoredSession(): boolean;
   clearStoredSession(): void;
   currentAPIBase(): string;
-  login(input: { username: string; password: string; serverURL: string }): Promise<BootstrapContext>;
+  login(input: { phoneNumber: string; password: string; serverURL: string }): Promise<BootstrapContext>;
   logout(): Promise<void>;
   bootstrap(): Promise<BootstrapContext>;
   listSkills(filters: MarketFilters): Promise<SkillSummary[]>;
+  listSkillLeaderboards(): Promise<SkillLeaderboardsResponse>;
   getSkill(skillID: string): Promise<SkillSummary>;
   downloadTicket(skill: SkillSummary, purpose: "install" | "update"): Promise<DownloadTicket>;
   star(skillID: string, starred: boolean): Promise<{ skillID: string; starred: boolean; starCount: number }>;
@@ -46,11 +48,11 @@ export interface P1Client {
   updateDepartment(departmentID: string, input: { name: string }): Promise<DepartmentNode[]>;
   deleteDepartment(departmentID: string): Promise<void>;
   listAdminUsers(): Promise<AdminUser[]>;
-  createAdminUser(input: { username: string; password: string; displayName: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]>;
-  updateAdminUser(targetUserID: string, input: { displayName?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }): Promise<AdminUser[]>;
-  freezeAdminUser(targetUserID: string): Promise<AdminUser[]>;
-  unfreezeAdminUser(targetUserID: string): Promise<AdminUser[]>;
-  deleteAdminUser(targetUserID: string): Promise<void>;
+  createAdminUser(input: { username: string; phoneNumber: string; password: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]>;
+  updateAdminUser(phoneNumber: string, input: { username?: string; phoneNumber?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }): Promise<AdminUser[]>;
+  freezeAdminUser(phoneNumber: string): Promise<AdminUser[]>;
+  unfreezeAdminUser(phoneNumber: string): Promise<AdminUser[]>;
+  deleteAdminUser(phoneNumber: string): Promise<void>;
   listAdminSkills(): Promise<AdminSkill[]>;
   delistAdminSkill(skillID: string): Promise<AdminSkill[]>;
   relistAdminSkill(skillID: string): Promise<AdminSkill[]>;

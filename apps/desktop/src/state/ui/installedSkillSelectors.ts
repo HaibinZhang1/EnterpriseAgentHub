@@ -1,9 +1,8 @@
-import type { ActionAvailability, PublishDraft, SkillSummary, TargetDraft } from "../../domain/p1.ts";
+import type { DiscoveredLocalSkill, SkillSummary, TargetDraft, ToolConfig } from "../../domain/p1.ts";
 import type { P1WorkspaceState } from "../useP1Workspace.ts";
+import type { InstalledTargetFilterType } from "./installedSkillsTypes.ts";
 
-function buildPendingAvailability(kind: ActionAvailability["kind"], label: string, reason: string): ActionAvailability {
-  return { kind, label, reason };
-}
+type DisplayLanguage = "zh-CN" | "en-US";
 
 function findScanSummary(workspace: P1WorkspaceState, targetType: "tool" | "project", targetID: string) {
   return workspace.scanTargets.find((summary) => summary.targetType === targetType && summary.targetID === targetID) ?? null;
@@ -14,19 +13,44 @@ export function findSkillScanFinding(workspace: P1WorkspaceState, skillID: strin
   return summary?.findings.find((finding) => finding.relativePath === skillID) ?? null;
 }
 
+function targetStatusLabel(status: string, language: DisplayLanguage): string {
+  if (status === "disabled") return language === "en-US" ? "Disabled" : "已停用";
+  const zhCN: Record<string, string> = {
+    detected: "已检测",
+    manual: "手动配置",
+    missing: "未检测到",
+    invalid: "路径无效"
+  };
+  const enUS: Record<string, string> = {
+    detected: "Detected",
+    manual: "Manual",
+    missing: "Missing",
+    invalid: "Invalid"
+  };
+  return (language === "en-US" ? enUS : zhCN)[status] ?? status;
+}
+
 function uniq(items: string[]): string[] {
   return [...new Set(items.filter((item) => item.trim().length > 0))];
 }
 
-export function buildTargetDrafts(skill: SkillSummary, workspace: P1WorkspaceState): TargetDraft[] {
+export function isAvailableToolTarget(tool: Pick<ToolConfig, "adapterStatus" | "enabled" | "skillsPath">): boolean {
+  return tool.enabled && tool.skillsPath.trim().length > 0 && !["missing", "invalid", "disabled"].includes(tool.adapterStatus);
+}
+
+export function compareToolsByAvailability(
+  left: Pick<ToolConfig, "adapterStatus" | "displayName" | "enabled" | "skillsPath" | "toolID">,
+  right: Pick<ToolConfig, "adapterStatus" | "displayName" | "enabled" | "skillsPath" | "toolID">
+): number {
+  const leftAvailable = isAvailableToolTarget(left);
+  const rightAvailable = isAvailableToolTarget(right);
+  if (leftAvailable !== rightAvailable) return leftAvailable ? -1 : 1;
+  return left.displayName.localeCompare(right.displayName) || left.toolID.localeCompare(right.toolID);
+}
+
+export function buildTargetDrafts(skill: SkillSummary, workspace: P1WorkspaceState, language: DisplayLanguage = "zh-CN"): TargetDraft[] {
   const enabledKeys = new Set(skill.enabledTargets.map((target) => `${target.targetType}:${target.targetID}`));
-  const toolDrafts = workspace.tools.map((tool) => {
-    const live =
-      tool.enabled &&
-      tool.skillsPath.trim().length > 0 &&
-      tool.adapterStatus !== "missing" &&
-      tool.adapterStatus !== "invalid" &&
-      tool.adapterStatus !== "disabled";
+  const toolDrafts = [...workspace.tools].sort(compareToolsByAvailability).filter(isAvailableToolTarget).map((tool) => {
     const scanSummary = findScanSummary(workspace, "tool", tool.toolID);
     const conflictCount = (scanSummary?.counts.conflict ?? 0) + (scanSummary?.counts.unmanaged ?? 0) + (scanSummary?.counts.orphan ?? 0);
     return {
@@ -35,30 +59,44 @@ export function buildTargetDrafts(skill: SkillSummary, workspace: P1WorkspaceSta
       targetID: tool.toolID,
       targetName: tool.name,
       targetPath: tool.skillsPath,
-      disabled: !live,
-      statusLabel: tool.enabled ? `${tool.adapterStatus}${conflictCount > 0 ? ` · 异常 ${conflictCount}` : ""}` : "disabled",
+      disabled: false,
+      statusLabel: tool.enabled ? `${targetStatusLabel(tool.adapterStatus, language)}${conflictCount > 0 ? ` · 异常 ${conflictCount}` : ""}` : targetStatusLabel("disabled", language),
       selected: enabledKeys.has(`tool:${tool.toolID}`),
-      availability: live
-        ? { kind: "live" as const, label: "已接入", reason: "当前可直接调用 Tauri 命令配置该目标。" }
-        : buildPendingAvailability("pending_local_command", "不可用", "请先修复工具检测状态、路径或启用状态。")
+      availability: { kind: "live" as const, label: "已接入", reason: "当前可直接调用 Tauri 命令配置该目标。" }
     };
   });
 
-  const projectDrafts = workspace.projects.map((project) => ({
+  const projectDrafts = workspace.projects.filter((project) => project.enabled).map((project) => ({
     key: `project:${project.projectID}`,
     targetType: "project" as const,
     targetID: project.projectID,
     targetName: project.name,
     targetPath: project.skillsPath,
-    disabled: !project.enabled,
+    disabled: false,
     statusLabel: project.enabled ? `项目级优先${findScanSummary(workspace, "project", project.projectID)?.counts.conflict ? ` · 异常 ${findScanSummary(workspace, "project", project.projectID)?.counts.conflict}` : ""}` : "已停用",
     selected: enabledKeys.has(`project:${project.projectID}`),
-    availability: project.enabled
-      ? { kind: "live" as const, label: "已接入", reason: "项目级目标已接到 Tauri SQLite 真源与分发命令。" }
-      : buildPendingAvailability("pending_local_command", "不可用", "启用项目后才可作为目标使用。")
+    availability: { kind: "live" as const, label: "已接入", reason: "项目级目标已接到 Tauri SQLite 真源与分发命令。" }
   }));
 
   return [...toolDrafts, ...projectDrafts];
+}
+
+export function matchesInstalledTargetFilter(
+  skill: SkillSummary,
+  targetFilterType: InstalledTargetFilterType,
+  targetFilterID: string
+): boolean {
+  if (targetFilterType === "all") return true;
+  return skill.enabledTargets.some((target) => target.targetType === targetFilterType && (targetFilterID === "all" || target.targetID === targetFilterID));
+}
+
+export function matchesDiscoveredTargetFilter(
+  skill: DiscoveredLocalSkill,
+  targetFilterType: InstalledTargetFilterType,
+  targetFilterID: string
+): boolean {
+  if (targetFilterType === "all") return true;
+  return skill.targets.some((target) => target.targetType === targetFilterType && (targetFilterID === "all" || target.targetID === targetFilterID));
 }
 
 export function collectInstalledSkillIssues(skill: SkillSummary, workspace: Pick<P1WorkspaceState, "tools" | "projects" | "scanTargets">): string[] {

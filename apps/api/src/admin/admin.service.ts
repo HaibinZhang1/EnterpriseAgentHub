@@ -44,8 +44,8 @@ export class AdminService {
     userID: string,
     input: {
       username?: string;
+      phoneNumber?: string;
       password?: string;
-      displayName?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;
@@ -59,7 +59,8 @@ export class AdminService {
     userID: string,
     targetUserID: string,
     input: {
-      displayName?: string;
+      username?: string;
+      phoneNumber?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;

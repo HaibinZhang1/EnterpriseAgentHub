@@ -23,6 +23,8 @@ export function useWorkspaceRemoteEffects(input: {
     setScanTargets: (value: any) => void;
   };
   market: {
+    setLeaderboards: (value: any) => void;
+    setLeaderboardsLoading: (value: any) => void;
     setSelectedSkillID: (value: any) => void;
     setSkills: (value: any) => void;
   };
@@ -61,6 +63,8 @@ export function useWorkspaceRemoteEffects(input: {
       if (cancelled) return;
       const localSkills = localBootstrap.installs.map(localSummaryFromInstall);
       auth.setBootstrap(buildGuestBootstrap(localBootstrap));
+      market.setLeaderboards(null);
+      market.setLeaderboardsLoading(false);
       market.setSkills(localSkills);
       localSync.setNotifications(localBootstrap.notifications);
       localSync.setOfflineEvents(localBootstrap.offlineEvents);
@@ -99,6 +103,8 @@ export function useWorkspaceRemoteEffects(input: {
     localSync.setOfflineEvents,
     localSync.setScanTargets,
     market.setSelectedSkillID,
+    market.setLeaderboards,
+    market.setLeaderboardsLoading,
     market.setSkills
   ]);
 
@@ -128,6 +134,34 @@ export function useWorkspaceRemoteEffects(input: {
     market.setSelectedSkillID,
     market.setSkills,
     remoteMarketFilters
+  ]);
+
+  useEffect(() => {
+    if (auth.authState !== "authenticated" || auth.bootstrap.connection.status !== "connected") return;
+    let cancelled = false;
+    market.setLeaderboardsLoading(true);
+
+    void p1Client
+      .listSkillLeaderboards()
+      .then((leaderboards) => {
+        if (cancelled) return;
+        market.setLeaderboards(leaderboards);
+      })
+      .catch(() => {
+        if (!cancelled) market.setLeaderboards(null);
+      })
+      .finally(() => {
+        if (!cancelled) market.setLeaderboardsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    auth.authState,
+    auth.bootstrap.connection.status,
+    market.setLeaderboards,
+    market.setLeaderboardsLoading
   ]);
 
   useEffect(() => {

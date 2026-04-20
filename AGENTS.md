@@ -30,7 +30,7 @@ python3 -m http.server 8000 --directory ui-prototype
 open http://localhost:8000
 ```
 
-You may also open `ui-prototype/index.html` directly in a browser. When adding future tooling, commit the manifest and document the canonical commands here, for example `npm run dev`, `npm test`, or `docker compose up`.
+When adding future tooling, commit the manifest and document the canonical commands here, for example `npm run dev`, `npm test`, or `docker compose up`.
 
 ## Coding Style & Naming Conventions
 

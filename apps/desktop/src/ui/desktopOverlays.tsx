@@ -15,7 +15,8 @@ import {
   WifiOff,
   X
 } from "lucide-react";
-import type { PublishDraft, PublisherSkillSummary, SkillSummary } from "../domain/p1.ts";
+import type { AdminSkill, OperationProgress, PreferenceState, PublishDraft, PublisherSkillSummary, SkillSummary } from "../domain/p1.ts";
+import { SKILL_CATEGORIES, SKILL_TAGS } from "../domain/p1.ts";
 import type { DesktopUIState, FlashMessage, OverlayState, PublisherPane } from "../state/useDesktopUIState.ts";
 import type { P1WorkspaceState } from "../state/useP1Workspace.ts";
 import { buildPublishPrecheck } from "../state/ui/publishPrecheck.ts";
@@ -35,9 +36,10 @@ import {
   statusTone,
   submissionTypeLabel,
   themeLabel,
+  roleLabel,
   workflowStateLabel
 } from "./desktopShared.tsx";
-import { InitialBadge, PackagePreviewPanel, SectionEmpty, SelectField, TagPill } from "./pageCommon.tsx";
+import { InitialBadge, PackagePreviewPanel, SectionEmpty, SelectField, TagPill, renderMarkdownPreview } from "./pageCommon.tsx";
 
 function OverlaySectionHeader({
   title,
@@ -70,7 +72,10 @@ function ModalFrame({
   children,
   onClose,
   narrow = false,
-  full = false
+  full = false,
+  panelClassName = "",
+  headerContent,
+  headActions
 }: {
   title: string;
   eyebrow: string;
@@ -78,19 +83,28 @@ function ModalFrame({
   onClose: () => void;
   narrow?: boolean;
   full?: boolean;
+  panelClassName?: string;
+  headerContent?: React.ReactNode;
+  headActions?: React.ReactNode;
 }) {
-  const className = full ? "overlay-panel full" : narrow ? "overlay-panel narrow" : "overlay-panel";
+  const baseClassName = full ? "overlay-panel full" : narrow ? "overlay-panel narrow" : "overlay-panel";
+  const className = [baseClassName, panelClassName].filter(Boolean).join(" ");
   return (
     <div className="overlay-backdrop" role="presentation" onClick={onClose}>
       <section className={className} role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
         <div className="overlay-head">
-          <div>
-            <div className="eyebrow">{eyebrow}</div>
-            <h2>{title}</h2>
+          {headerContent ?? (
+            <div>
+              <div className="eyebrow">{eyebrow}</div>
+              <h2>{title}</h2>
+            </div>
+          )}
+          <div className="overlay-head-actions">
+            {headActions}
+            <button className="icon-button" type="button" aria-label="关闭" onClick={onClose}>
+              <X size={16} />
+            </button>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭" onClick={onClose}>
-            <X size={16} />
-          </button>
         </div>
         <div className="overlay-body">{children}</div>
       </section>
@@ -98,23 +112,57 @@ function ModalFrame({
   );
 }
 
+export function progressStepsForOperation(operation: OperationProgress["operation"]): string[] {
+  if (operation === "install" || operation === "update") {
+    return ["获取下载凭证", "下载包", "校验大小和文件数", "校验 SHA-256", "写入 Central Store", "完成"];
+  }
+  if (operation === "request") {
+    return ["发起请求", "等待服务响应", "处理结果"];
+  }
+  if (operation === "import") {
+    return ["校验来源", "写入 Central Store", "认领原路径", "完成"];
+  }
+  if (operation === "scan") {
+    return ["启动扫描", "读取工具和项目目录", "完成"];
+  }
+  return ["准备目标", "执行本地命令", "写入结果", "完成"];
+}
+
+export function progressTitle(progress: OperationProgress): string {
+  if (progress.operation === "scan") return "扫描本地目标";
+  return progress.operation === "request" ? "请求失败" : `${progress.operation} · ${progress.skillID}`;
+}
+
+export function progressEyebrow(operation: OperationProgress["operation"]): string {
+  if (operation === "scan") return "本地扫描";
+  return operation === "request" ? "服务连接" : "本地写入流程";
+}
+
 function defaultLoginForm(apiBaseURL: string) {
   return {
     serverURL: apiBaseURL,
-    username: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_USERNAME ?? "" : "",
+    phoneNumber: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PHONE_NUMBER ?? "" : "",
     password: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PASSWORD ?? "" : ""
   };
+}
+
+function normalizePhoneInput(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 11);
+}
+
+function validatePhoneNumber(value: string): string | null {
+  if (!value) return "请输入手机号。";
+  if (!/^\d+$/.test(value)) return "手机号只能输入数字。";
+  if (value.length !== 11) return "手机号需为 11 位数字。";
+  if (!value.startsWith("1")) return "手机号需以 1 开头。";
+  return null;
 }
 
 function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: DesktopUIState }) {
   const [form, setForm] = useState(() => defaultLoginForm(workspace.apiBaseURL));
   const [submitting, setSubmitting] = useState(false);
-  const localDevSuggestion = "http://127.0.0.1:3001";
-  const authErrorMessage = workspace.authError ?? "";
-  const shouldSuggestLocalDevPort =
-    Boolean(workspace.authError) &&
-    form.serverURL.trim() !== localDevSuggestion &&
-    (authErrorMessage.includes("请求超时") || authErrorMessage.includes("无法连接服务"));
+  const [formError, setFormError] = useState<string | null>(null);
+  const visibleError = formError ?? workspace.authError;
 
   useEffect(() => {
     if (!workspace.loginModalOpen) return;
@@ -123,17 +171,32 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
       serverURL: workspace.apiBaseURL
     }));
     setSubmitting(false);
+    setFormError(null);
   }, [workspace.apiBaseURL, workspace.loginModalOpen]);
 
   if (!workspace.loginModalOpen) return null;
 
   function updateField(event: ChangeEvent<HTMLInputElement>) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    const nextValue = event.target.name === "phoneNumber" ? normalizePhoneInput(event.target.value) : event.target.value;
+    setForm((current) => ({ ...current, [event.target.name]: nextValue }));
+    if (event.target.name === "phoneNumber" || event.target.name === "password") {
+      setFormError(null);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
+    const phoneError = validatePhoneNumber(form.phoneNumber);
+    if (phoneError) {
+      setFormError(phoneError);
+      return;
+    }
+    if (!form.password.trim()) {
+      setFormError("请输入密码。");
+      return;
+    }
+    setFormError(null);
     setSubmitting(true);
     try {
       await workspace.login(form);
@@ -143,10 +206,11 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
   }
 
   return (
-    <ModalFrame title="登录企业服务" eyebrow="身份连接" onClose={() => workspace.setLoginModalOpen(false)} narrow>
+    <ModalFrame title="手机号登录企业服务" eyebrow="身份连接" onClose={() => workspace.setLoginModalOpen(false)} narrow>
+      <div data-testid="login-modal">
       <div className="overlay-intro">
         <div className="detail-symbol-card overlay-symbol-card">
-          <span className="overlay-symbol-mark">EA</span>
+          <span className="overlay-symbol-mark icon-tone-pine">EA</span>
         </div>
         <div>
           <p className="overlay-intro-title">登录后同步市场、通知和权限</p>
@@ -159,10 +223,11 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
         <TagPill tone="neutral">本地配置保留</TagPill>
       </div>
       <div className="stack-list">
-        <form className="form-stack" onSubmit={submit}>
+        <form className="form-stack" onSubmit={submit} noValidate>
           <label className="field">
             <span>服务地址</span>
             <input
+              data-testid="login-server-url"
               name="serverURL"
               value={form.serverURL}
               inputMode="url"
@@ -173,20 +238,25 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
             />
           </label>
           <label className="field">
-            <span>用户名</span>
+            <span>手机号</span>
             <input
-              name="username"
-              value={form.username}
-              autoComplete="username"
+              data-testid="login-phone-number"
+              name="phoneNumber"
+              value={form.phoneNumber}
+              inputMode="tel"
+              autoComplete="tel"
               autoCapitalize="none"
+              maxLength={11}
+              pattern="1[0-9]{10}"
               spellCheck={false}
-              placeholder="输入企业账号"
+              placeholder="11 位手机号"
               onChange={updateField}
             />
           </label>
           <label className="field">
             <span>密码</span>
             <input
+              data-testid="login-password"
               name="password"
               type="password"
               value={form.password}
@@ -195,27 +265,16 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
               onChange={updateField}
             />
           </label>
-          {workspace.authError ? (
+          {visibleError ? (
             <div className="callout warning">
-              <WifiOff size={16} />
+              {formError ? <AlertTriangle size={16} /> : <WifiOff size={16} />}
               <span>
-                <strong>{workspace.authError}</strong>
-                {shouldSuggestLocalDevPort ? <small>当前本机开发环境可改用 {localDevSuggestion}</small> : null}
+                <strong>{visibleError}</strong>
               </span>
             </div>
           ) : null}
-          {shouldSuggestLocalDevPort ? (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setForm((current) => ({ ...current, serverURL: localDevSuggestion }))}
-              disabled={submitting}
-            >
-              改用本机 3001
-            </button>
-          ) : null}
           <div className="inline-actions wrap">
-            <button className="btn btn-primary" type="submit" disabled={submitting}>
+            <button className="btn btn-primary" type="submit" data-testid="login-submit" disabled={submitting}>
               <LogIn size={14} />
               {submitting ? "正在连接..." : "登录"}
             </button>
@@ -224,6 +283,7 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
             </button>
           </div>
         </form>
+      </div>
       </div>
     </ModalFrame>
   );
@@ -255,14 +315,12 @@ function ConfirmModal({ ui }: { ui: DesktopUIState }) {
 function ProgressModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: DesktopUIState }) {
   const progress = workspace.progress;
   if (!progress || !ui.preferences.showInstallResults) return null;
-  const steps = progress.operation === "install" || progress.operation === "update"
-    ? ["获取下载凭证", "下载包", "校验大小和文件数", "校验 SHA-256", "写入 Central Store", "完成"]
-    : ["准备目标", "执行本地命令", "写入结果", "完成"];
+  const steps = progressStepsForOperation(progress.operation);
   const currentIndex = Math.max(0, steps.findIndex((step) => progress.stage.includes(step)));
   const toneIcon = progress.result === "success" ? <CheckCircle2 size={18} /> : progress.result === "failed" ? <AlertTriangle size={18} /> : <Sparkles size={18} />;
 
   return (
-    <ModalFrame title={`${progress.operation} · ${progress.skillID}`} eyebrow="本地写入流程" onClose={ui.closeModal} narrow>
+    <ModalFrame title={progressTitle(progress)} eyebrow={progressEyebrow(progress.operation)} onClose={ui.closeModal} narrow>
       <div className={`callout ${progress.result === "failed" ? "warning" : "info"}`}>
         {toneIcon}
         {progress.message}
@@ -297,10 +355,13 @@ function TargetsModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Desk
         {ui.targetDrafts.map((draft) => (
           <label key={draft.key} className={draft.disabled ? "target-tile disabled" : "target-tile"}>
             <input type="checkbox" checked={draft.selected} disabled={draft.disabled} onChange={() => ui.toggleTargetDraft(draft.key)} />
-            <span>
-              <strong>{draft.targetName}</strong>
-              <small>{draft.targetPath}</small>
-              <small>{draft.statusLabel} · {draft.availability.label}</small>
+            <span className="target-tile-copy">
+              <span className="target-tile-head">
+                <strong>{draft.targetName}</strong>
+                <TagPill tone={draft.disabled ? "warning" : "success"}>{draft.availability.label}</TagPill>
+              </span>
+              <small className="target-path-text">{draft.targetPath || "未配置路径"}</small>
+              <small>{draft.statusLabel}</small>
             </span>
           </label>
         ))}
@@ -317,6 +378,90 @@ function TargetsModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Desk
           <FolderPlus size={14} />
           添加项目
         </button>
+      </div>
+    </ModalFrame>
+  );
+}
+
+function LocalImportModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: DesktopUIState }) {
+  const modal = ui.modal;
+  const skill = modal.type === "local_import" ? workspace.discoveredLocalSkills.find((item) => item.skillID === modal.skillID) ?? null : null;
+  const [finalSkillID, setFinalSkillID] = useState("");
+  const [replaceArmed, setReplaceArmed] = useState(false);
+
+  useEffect(() => {
+    if (modal.type !== "local_import") return;
+    const nextSkill = workspace.discoveredLocalSkills.find((item) => item.skillID === modal.skillID) ?? null;
+    setFinalSkillID(nextSkill?.suggestedSkillID ?? nextSkill?.skillID ?? "");
+    setReplaceArmed(false);
+  }, [modal, workspace.discoveredLocalSkills]);
+
+  if (modal.type !== "local_import" || !skill) return null;
+
+  const hasConflict = skill.hasCentralStoreConflict || skill.hasScanConflict;
+  const idValid = /^[a-z0-9][a-z0-9_-]*$/.test(finalSkillID);
+  const sourceLines = skill.targets.map((target) => `${target.targetName} · ${target.targetPath}`);
+
+  async function importWith(strategy: "rename" | "replace", skillID: string) {
+    ui.closeModal();
+    await workspace.importLocalSkill(skill!, skillID, strategy);
+    workspace.selectSkill(skillID);
+  }
+
+  return (
+    <ModalFrame title={`纳入管理：${skill.displayName}`} eyebrow="本地托管" onClose={ui.closeModal}>
+      <div className={hasConflict ? "callout warning" : "callout info"}>
+        {hasConflict ? <AlertTriangle size={16} /> : <Sparkles size={16} />}
+        {hasConflict ? "检测到同名或多来源冲突，推荐重命名后导入。" : "会复制到本机 Central Store，并认领当前来源路径为已启用目标。"}
+      </div>
+      <div className="definition-grid split">
+        <div><dt>扫描 ID</dt><dd>{skill.skillID}</dd></div>
+        <div><dt>本地版本</dt><dd>{skill.version}</dd></div>
+        <div><dt>来源数</dt><dd>{skill.targets.length}</dd></div>
+        <div><dt>同步策略</dt><dd>仅本机，不上传服务器</dd></div>
+      </div>
+      <label className="field">
+        <span>导入后的 skillID</span>
+        <input value={finalSkillID} onChange={(event) => setFinalSkillID(event.target.value.trim())} />
+      </label>
+      {!idValid ? <div className="callout warning"><AlertTriangle size={16} /> skillID 只能使用小写字母、数字、连字符或下划线，并且不能以符号开头。</div> : null}
+      <div className="detail-block">
+        <h3>将认领的来源路径</h3>
+        <div className="stack-list compact">
+          {sourceLines.map((line) => <small key={line}>{line}</small>)}
+        </div>
+      </div>
+      {replaceArmed ? (
+        <div className="callout warning">
+          <AlertTriangle size={16} />
+          确认替换会覆盖 Central Store 中同名本地副本。已有启用目标不会上传服务器，但后续卸载会按托管目标清理。
+        </div>
+      ) : null}
+      <div className="inline-actions wrap">
+        <button className="btn btn-primary" type="button" disabled={!idValid} onClick={() => void importWith("rename", finalSkillID)}>
+          {hasConflict ? "重命名导入" : "纳入管理"}
+        </button>
+        {hasConflict ? (
+          <>
+            <button className="btn" type="button" onClick={ui.closeModal}>
+              保留现有
+            </button>
+            <button
+              className={replaceArmed ? "btn btn-danger" : "btn"}
+              type="button"
+              onClick={() => {
+                if (!replaceArmed) {
+                  setFinalSkillID(skill.skillID);
+                  setReplaceArmed(true);
+                  return;
+                }
+                void importWith("replace", skill.skillID);
+              }}
+            >
+              {replaceArmed ? "确认替换本地" : "用扫描副本替换"}
+            </button>
+          </>
+        ) : null}
       </div>
     </ModalFrame>
   );
@@ -415,7 +560,7 @@ function ProjectEditorModal({ ui }: { ui: DesktopUIState }) {
 function ConnectionStatusModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: DesktopUIState }) {
   if (ui.modal.type !== "connection_status") return null;
   const status = workspace.bootstrap.connection.status;
-  const title = workspace.loggedIn ? "连接状态" : "本地模式";
+  const roleText = roleLabel(workspace.currentUser, ui.language);
   const statusText =
     workspace.loggedIn
       ? status === "connected"
@@ -426,24 +571,51 @@ function ConnectionStatusModal({ workspace, ui }: { workspace: P1WorkspaceState;
             ? "离线模式"
             : "连接失败"
       : "当前仅使用本地已安装数据";
+  const statusToneClass = status === "connected" ? "success" : status === "connecting" ? "info" : "warning";
+  const adminLevelLabel = workspace.currentUser.adminLevel ? `L${workspace.currentUser.adminLevel}` : "-";
+  const serviceTime = workspace.bootstrap.connection.serverTime ? formatDate(workspace.bootstrap.connection.serverTime, ui.language) : "-";
 
   return (
-    <ModalFrame title={title} eyebrow="服务连接" onClose={ui.closeModal} narrow>
-      <div className={`callout ${status === "connected" ? "info" : "warning"}`}>
-        {status === "connected" ? <CheckCircle2 size={16} /> : <WifiOff size={16} />}
-        {statusText}
+    <ModalFrame title="我的信息" eyebrow="账号概览" onClose={ui.closeModal} narrow>
+      <div className="account-profile-panel">
+        <InitialBadge label={workspace.currentUser.username} large className="account-profile-avatar" />
+        <div className="account-profile-copy">
+          <div className="eyebrow">当前身份</div>
+          <h3>{workspace.currentUser.username}</h3>
+          <p>{roleText}</p>
+          <div className="pill-row">
+            <TagPill tone={statusToneClass}>{statusText}</TagPill>
+            <TagPill tone="neutral">{workspace.currentUser.departmentName}</TagPill>
+          </div>
+        </div>
       </div>
-      <div className="definition-grid">
-        <div><dt>最近错误</dt><dd>{workspace.bootstrap.connection.lastError ?? "暂无最近错误"}</dd></div>
-        <div><dt>API 版本</dt><dd>{workspace.bootstrap.connection.apiVersion || "-"}</dd></div>
-        <div><dt>服务端时间</dt><dd>{workspace.bootstrap.connection.serverTime ? formatDate(workspace.bootstrap.connection.serverTime, ui.language) : "-"}</dd></div>
-        <div><dt>当前身份</dt><dd>{workspace.currentUser.displayName}</dd></div>
+      <div className="account-info-grid">
+        <div className="account-info-item"><span>用户名称</span><strong>{workspace.currentUser.username}</strong></div>
+        <div className="account-info-item"><span>手机号</span><strong>{workspace.currentUser.phoneNumber || "-"}</strong></div>
+        <div className="account-info-item"><span>所属部门</span><strong>{workspace.currentUser.departmentName}</strong></div>
+        <div className="account-info-item"><span>权限角色</span><strong>{roleText}</strong></div>
+        <div className="account-info-item"><span>管理级别</span><strong>{adminLevelLabel}</strong></div>
+      </div>
+      <div className="account-service-panel">
+        <div className="account-service-head">
+          <span>
+            {status === "connected" ? <CheckCircle2 size={16} /> : <WifiOff size={16} />}
+            服务状态
+          </span>
+          <TagPill tone={statusToneClass}>{statusText}</TagPill>
+        </div>
+        <div className="definition-grid compact">
+          <div><dt>API 版本</dt><dd>{workspace.bootstrap.connection.apiVersion || "-"}</dd></div>
+          <div><dt>服务端时间</dt><dd>{serviceTime}</dd></div>
+          <div><dt>最近错误</dt><dd>{workspace.bootstrap.connection.lastError ?? "暂无最近错误"}</dd></div>
+          <div><dt>界面语言</dt><dd>{workspace.currentUser.locale}</dd></div>
+        </div>
       </div>
       <div className="inline-actions wrap">
         {workspace.loggedIn ? (
           <button className="btn btn-primary" type="button" onClick={() => void workspace.refreshBootstrap()}>
             <RefreshCw size={14} />
-            重试连接
+            刷新信息
           </button>
         ) : (
           <button className="btn btn-primary" type="button" onClick={() => { ui.closeModal(); workspace.requireAuth(null); }}>
@@ -487,96 +659,250 @@ function AppUpdateModal({ ui }: { ui: DesktopUIState }) {
   );
 }
 
+type SettingsPanelID = "general" | "agent" | "local" | "sync";
+
+const defaultAgentBaseURLs: Record<PreferenceState["agentProvider"], string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com",
+  custom: ""
+};
+
+function agentProviderLabel(provider: PreferenceState["agentProvider"]) {
+  return {
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    custom: "自定义"
+  }[provider];
+}
+
 function SettingsModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: DesktopUIState }) {
+  const [activePanel, setActivePanel] = useState<SettingsPanelID>("general");
   if (ui.modal.type !== "settings") return null;
 
   const themeOptions = [
-    { value: "classic", title: "Classic", description: "冷白背景，保持企业工作台的标准对比。" },
-    { value: "fresh", title: "Fresh", description: "更轻一点的蓝感背景，适合长时间浏览。" },
-    { value: "contrast", title: "Contrast", description: "提高层级对比，适合信息密度更高的场景。" }
+    { value: "classic", title: "经典白", description: "冷白背景，保持企业工作台的标准对比。" },
+    { value: "fresh", title: "清爽蓝", description: "更轻一点的蓝感背景，适合长时间浏览。" },
+    { value: "contrast", title: "高对比", description: "提高层级对比，适合信息密度更高的场景。" }
   ] as const;
+  const knownAgentBaseURLs = Object.values(defaultAgentBaseURLs).filter(Boolean);
+  const hasAgentKey = ui.preferences.agentApiKey.trim().length > 0;
+  const settingsPanels: Array<{ id: SettingsPanelID; title: string; description: string; status: string }> = [
+    { id: "general", title: "常规偏好", description: "语言、主题", status: themeLabel(ui.preferences.theme, ui.language) },
+    { id: "agent", title: "Agent 接入", description: "模型服务、API Key", status: hasAgentKey ? "已保存" : "待配置" },
+    { id: "local", title: "本地环境", description: "Central Store、服务地址", status: workspace.bootstrap.connection.status === "connected" ? "已连接" : "本地可用" },
+    { id: "sync", title: "同步与更新", description: "通知、启动上下文", status: ui.appUpdate.available ? "有更新" : "已是最新" }
+  ];
+  const activePanelMeta = settingsPanels.find((panel) => panel.id === activePanel) ?? settingsPanels[0];
+  const agentBaseURL = ui.preferences.agentBaseURL || defaultAgentBaseURLs[ui.preferences.agentProvider];
+  const updateStatus = ui.appUpdate.available ? `可更新到 ${ui.appUpdate.latestVersion}` : "已是最新版本";
 
   return (
-    <ModalFrame title={localize(ui.language, "设置", "Settings")} eyebrow={localize(ui.language, "基础偏好", "Preferences")} onClose={ui.closeModal}>
-      <div className="overlay-intro settings-intro">
-        <div>
-          <p className="overlay-intro-title">{localize(ui.language, "保留主题、语言和同步入口，通过头像菜单进入。", "Keep theme, language, and sync controls here via the avatar menu.")}</p>
-          <p className="overlay-intro-copy">{localize(ui.language, "不再占用一级导航，只保留高频偏好与本地环境信息。", "This no longer occupies top-level navigation and stays focused on frequent preferences and local environment info.")}</p>
-        </div>
-      </div>
-      <div className="settings-stack">
-        <section className="settings-section">
-          <h3>{localize(ui.language, "常规", "General")}</h3>
-          <SelectField
-            label={localize(ui.language, "显示语言", "Display Language")}
-            value={ui.preferences.language}
-            onChange={(value) =>
-              ui.setPreferences((current) => ({
-                ...current,
-                language: value as typeof current.language,
-                autoDetectLanguage: value === "auto"
-              }))
-            }
-            options={[
-              { value: "auto", label: settingsLanguageLabel("auto", ui.language) },
-              { value: "zh-CN", label: settingsLanguageLabel("zh-CN", ui.language) },
-              { value: "en-US", label: settingsLanguageLabel("en-US", ui.language) }
-            ]}
-          />
-          <label className="toggle-row compact">
-            <span>{localize(ui.language, "按系统地区自动识别", "Follow System Language")}</span>
-            <input
-              type="checkbox"
-              checked={ui.preferences.autoDetectLanguage}
-              onChange={(event) =>
-                ui.setPreferences((current) => ({
-                  ...current,
-                  autoDetectLanguage: event.target.checked,
-                  language: event.target.checked ? "auto" : current.language === "auto" ? ui.language : current.language
-                }))
-              }
-            />
-          </label>
-        </section>
-
-        <section className="settings-section">
-          <h3>{localize(ui.language, "主题", "Theme")}</h3>
-          <div className="settings-choice-grid">
-            {themeOptions.map((option) => (
-              <button
-                key={option.value}
-                className={ui.preferences.theme === option.value ? "settings-choice active" : "settings-choice"}
-                type="button"
-                onClick={() => ui.setPreferences((current) => ({ ...current, theme: option.value }))}
-              >
-                <strong>{themeLabel(option.value, ui.language)}</strong>
-                <small>{option.description}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h3>Central Store</h3>
-          <p className="settings-path">{workspace.localCentralStorePath || previewCentralStorePath()}</p>
-          <small>这里只展示当前路径，真实文件写入仍通过桌面命令处理。</small>
-        </section>
-
-        <section className="settings-section">
-          <h3>{localize(ui.language, "同步", "Sync")}</h3>
-          <label className="toggle-row compact">
-            <span>{localize(ui.language, "显示安装/更新结果", "Show Install and Update Results")}</span>
-            <input type="checkbox" checked={ui.preferences.showInstallResults} onChange={(event) => ui.setPreferences((current) => ({ ...current, showInstallResults: event.target.checked }))} />
-          </label>
-          <label className="toggle-row compact">
-            <span>{localize(ui.language, "同步本地事件到通知", "Sync Local Events into Notifications")}</span>
-            <input type="checkbox" checked={ui.preferences.syncLocalEvents} onChange={(event) => ui.setPreferences((current) => ({ ...current, syncLocalEvents: event.target.checked }))} />
-          </label>
-          <div className="inline-actions wrap">
-            <button className="btn" type="button" onClick={() => void workspace.refreshBootstrap()}>
-              <RefreshCw size={14} />
-              {localize(ui.language, "刷新连接状态", "Refresh Connection")}
+    <ModalFrame title={localize(ui.language, "设置", "Settings")} eyebrow={localize(ui.language, "基础偏好", "Preferences")} onClose={ui.closeModal} panelClassName="settings-modal-panel">
+      <div className="settings-shell">
+        <nav className="settings-sidebar" aria-label="设置列表">
+          {settingsPanels.map((panel) => (
+            <button
+              key={panel.id}
+              className={activePanel === panel.id ? "settings-nav-item active" : "settings-nav-item"}
+              type="button"
+              onClick={() => setActivePanel(panel.id)}
+            >
+              <span>
+                <strong>{panel.title}</strong>
+                <small>{panel.description}</small>
+              </span>
+              <em>{panel.status}</em>
             </button>
+          ))}
+        </nav>
+        <section className="settings-detail" aria-label={activePanelMeta.title}>
+          <div className="settings-detail-head">
+            <div>
+              <div className="eyebrow">{activePanelMeta.description}</div>
+              <h3>{activePanelMeta.title}</h3>
+            </div>
+            <span className="pill tone-neutral">{activePanelMeta.status}</span>
+          </div>
+
+          <div className="settings-detail-scroll">
+          {activePanel === "general" ? (
+            <div className="settings-panel-stack">
+              <SelectField
+                label={localize(ui.language, "显示语言", "Display Language")}
+                value={ui.preferences.language}
+                onChange={(value) =>
+                  ui.setPreferences((current) => ({
+                    ...current,
+                    language: value as typeof current.language,
+                    autoDetectLanguage: value === "auto"
+                  }))
+                }
+                options={[
+                  { value: "auto", label: settingsLanguageLabel("auto", ui.language) },
+                  { value: "zh-CN", label: settingsLanguageLabel("zh-CN", ui.language) },
+                  { value: "en-US", label: settingsLanguageLabel("en-US", ui.language) }
+                ]}
+              />
+              <label className="toggle-row compact">
+                <span>{localize(ui.language, "按系统地区自动识别", "Follow System Language")}</span>
+                <input
+                  type="checkbox"
+                  checked={ui.preferences.autoDetectLanguage}
+                  onChange={(event) =>
+                    ui.setPreferences((current) => ({
+                      ...current,
+                      autoDetectLanguage: event.target.checked,
+                      language: event.target.checked ? "auto" : current.language === "auto" ? ui.language : current.language
+                    }))
+                  }
+                />
+              </label>
+              <div>
+                <span className="settings-inline-label">{localize(ui.language, "界面主题", "Theme")}</span>
+                <div className="settings-choice-grid compact">
+                  {themeOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      className={ui.preferences.theme === option.value ? "settings-choice active" : "settings-choice"}
+                      type="button"
+                      onClick={() => ui.setPreferences((current) => ({ ...current, theme: option.value }))}
+                    >
+                      <strong>{themeLabel(option.value, ui.language)}</strong>
+                      <small>{option.description}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activePanel === "agent" ? (
+            <div className="settings-panel-stack">
+              <div className="callout info">
+                <Sparkles size={16} />
+                <span>
+                  <strong>先准备 Agent 调用所需凭据。</strong>
+                  <small>当前只保存本机配置，后续接入真实 Agent 执行链路时会迁移到更安全的密钥存储。</small>
+                </span>
+              </div>
+              <SelectField
+                label="模型服务"
+                value={ui.preferences.agentProvider}
+                onChange={(value) =>
+                  ui.setPreferences((current) => {
+                    const nextProvider = value as PreferenceState["agentProvider"];
+                    const shouldUseDefaultBase = !current.agentBaseURL || knownAgentBaseURLs.includes(current.agentBaseURL);
+                    return {
+                      ...current,
+                      agentProvider: nextProvider,
+                      agentBaseURL: shouldUseDefaultBase ? defaultAgentBaseURLs[nextProvider] : current.agentBaseURL
+                    };
+                  })
+                }
+                options={[
+                  { value: "openai", label: "OpenAI" },
+                  { value: "anthropic", label: "Anthropic" },
+                  { value: "custom", label: "自定义兼容服务" }
+                ]}
+              />
+              <label className="field">
+                <span>API Key</span>
+                <input
+                  type="password"
+                  value={ui.preferences.agentApiKey}
+                  placeholder="sk-..."
+                  autoComplete="off"
+                  onChange={(event) => ui.setPreferences((current) => ({ ...current, agentApiKey: event.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span>Base URL</span>
+                <input
+                  type="url"
+                  value={agentBaseURL}
+                  placeholder="https://api.example.com/v1"
+                  onChange={(event) => ui.setPreferences((current) => ({ ...current, agentBaseURL: event.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span>默认模型</span>
+                <input
+                  type="text"
+                  value={ui.preferences.agentDefaultModel}
+                  placeholder="gpt-5.4"
+                  onChange={(event) => ui.setPreferences((current) => ({ ...current, agentDefaultModel: event.target.value }))}
+                />
+              </label>
+              <div className="settings-meta-row">
+                <span>{agentProviderLabel(ui.preferences.agentProvider)}</span>
+                <small>{hasAgentKey ? "API Key 已保存，可用于后续 Agent 接入。" : "尚未填写 API Key。"}</small>
+              </div>
+              <div className="inline-actions wrap">
+                <button className="btn" type="button" onClick={() => ui.setPreferences((current) => ({ ...current, agentApiKey: "" }))} disabled={!hasAgentKey}>
+                  清除 Key
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {activePanel === "local" ? (
+            <div className="settings-panel-stack">
+              <div className="settings-meta-row">
+                <span>Central Store</span>
+                <p className="settings-path">{workspace.localCentralStorePath || previewCentralStorePath()}</p>
+              </div>
+              <div className="settings-meta-row">
+                <span>企业服务地址</span>
+                <p className="settings-path">{workspace.apiBaseURL}</p>
+              </div>
+              <div className="settings-meta-row">
+                <span>连接状态</span>
+                <small>{workspace.bootstrap.connection.status === "connected" ? `已连接 · API ${workspace.bootstrap.connection.apiVersion}` : workspace.bootstrap.connection.lastError ?? "离线，本地能力仍可使用。"}</small>
+              </div>
+              <small>工具路径、项目路径和启用范围继续在“本地”页维护，设置里只保留环境概览。</small>
+              <div className="inline-actions wrap">
+                <button className="btn" type="button" onClick={() => void workspace.refreshBootstrap()}>
+                  <RefreshCw size={14} />
+                  刷新连接状态
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {activePanel === "sync" ? (
+            <div className="settings-panel-stack">
+              <label className="toggle-row compact">
+                <span>{localize(ui.language, "显示安装/更新结果", "Show Install and Update Results")}</span>
+                <input type="checkbox" checked={ui.preferences.showInstallResults} onChange={(event) => ui.setPreferences((current) => ({ ...current, showInstallResults: event.target.checked }))} />
+              </label>
+              <label className="toggle-row compact">
+                <span>{localize(ui.language, "同步本地事件到通知", "Sync Local Events into Notifications")}</span>
+                <input type="checkbox" checked={ui.preferences.syncLocalEvents} onChange={(event) => ui.setPreferences((current) => ({ ...current, syncLocalEvents: event.target.checked }))} />
+              </label>
+              <div className="settings-meta-row">
+                <span>客户端更新</span>
+                <small>{updateStatus}</small>
+              </div>
+              {ui.appUpdate.available ? (
+                <div className="callout info">
+                  <Download size={16} />
+                  <span>
+                    <strong>发现新版本 {ui.appUpdate.latestVersion}</strong>
+                    <small>{ui.appUpdate.summary}</small>
+                  </span>
+                </div>
+              ) : null}
+              <div className="inline-actions wrap">
+                <button className="btn btn-primary" type="button" onClick={ui.openAppUpdateModal} disabled={!ui.appUpdate.available}>
+                  查看更新
+                </button>
+                <button className="btn" type="button" onClick={() => void workspace.refreshBootstrap()}>
+                  <RefreshCw size={14} />
+                  刷新启动上下文
+                </button>
+              </div>
+            </div>
+          ) : null}
           </div>
         </section>
       </div>
@@ -584,76 +910,336 @@ function SettingsModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Des
   );
 }
 
+function managementSkillStatusLabel(status: string) {
+  return {
+    published: "已上架",
+    delisted: "已下架",
+    archived: "已归档"
+  }[status] ?? status;
+}
+
+function riskToneClass(risk: string | null | undefined): "success" | "warning" | "danger" | "info" | "neutral" {
+  if (risk === "high") return "danger";
+  if (risk === "medium") return "warning";
+  if (risk === "low") return "success";
+  return "neutral";
+}
+
+function fallbackRiskLabel(risk: string, language: DesktopUIState["language"]) {
+  return language === "en-US"
+    ? { low: "Low", medium: "Medium", high: "High", unknown: "Unknown" }[risk] ?? risk
+    : { low: "低", medium: "中", high: "高", unknown: "未知" }[risk] ?? risk;
+}
+
+function fallbackSkillDetail(input: {
+  adminSkill?: AdminSkill;
+  publisherSkill?: PublisherSkillSummary;
+  selectedSubmission?: P1WorkspaceState["publisherData"]["selectedPublisherSubmission"];
+  language: DesktopUIState["language"];
+}) {
+  if (input.adminSkill) {
+    const skill = input.adminSkill;
+    return {
+      displayName: skill.displayName,
+      skillID: skill.skillID,
+      description: skill.description,
+      statusLabel: managementSkillStatusLabel(skill.status),
+      statusTone: skill.status === "published" ? "success" as const : skill.status === "delisted" ? "warning" as const : "neutral" as const,
+      category: skill.category ?? "未分类",
+      risk: skill.currentVersionRiskLevel,
+      version: skill.version,
+      owner: skill.publisherName,
+      department: skill.departmentName,
+      visibility: publishVisibilityLabel(skill.visibilityLevel, input.language),
+      updatedAt: skill.updatedAt,
+      metrics: [`Star ${skill.starCount}`, `下载 ${skill.downloadCount}`],
+      summary: skill.currentVersionReviewSummary ?? "当前版本暂无审核摘要。",
+      sourceLabel: "该详情来自管理 Skill 列表。"
+    };
+  }
+
+  if (input.publisherSkill) {
+    const skill = input.publisherSkill;
+    const submission = input.selectedSubmission?.skillID === skill.skillID ? input.selectedSubmission : null;
+    const stateLabel = skill.latestWorkflowState
+      ? workflowStateLabel(skill.latestWorkflowState, input.language)
+      : skill.currentStatus
+        ? managementSkillStatusLabel(skill.currentStatus)
+        : "暂无提交";
+    const visibility = skill.currentVisibilityLevel ?? skill.latestRequestedVisibilityLevel ?? submission?.visibilityLevel;
+    const scope = skill.currentScopeType ?? skill.latestRequestedScopeType ?? submission?.scopeType;
+    return {
+      displayName: skill.displayName,
+      skillID: skill.skillID,
+      description: submission?.description ?? skill.latestReviewSummary ?? "该 Skill 当前保留作者工作台摘要，可从社区-我的查看提交包与审核结果。",
+      statusLabel: stateLabel,
+      statusTone: skill.latestWorkflowState === "published" || skill.currentStatus === "published" ? "success" as const : "info" as const,
+      category: submissionTypeLabel(skill.latestSubmissionType ?? submission?.submissionType ?? "publish", input.language),
+      risk: null,
+      version: skill.currentVersion ?? skill.latestRequestedVersion ?? submission?.version ?? "未发布",
+      owner: "当前账号",
+      department: "",
+      visibility: visibility ? publishVisibilityLabel(visibility, input.language) : "未设置",
+      updatedAt: skill.updatedAt,
+      metrics: [scope ? scopeLabel(scope, input.language) : "未设置", skill.submittedAt ? formatDate(skill.submittedAt, input.language) : "暂无提交"],
+      summary: skill.latestReviewSummary ?? submission?.reviewSummary ?? "当前发布记录可继续查看详情、发起新版本或调整权限。",
+      sourceLabel: "该详情来自社区作者工作台。"
+    };
+  }
+
+  return null;
+}
+
+function skillDetailHead({
+  displayName,
+  eyebrow,
+  meta,
+  description,
+  tags
+}: {
+  displayName: string;
+  eyebrow: string;
+  meta: string;
+  description: string;
+  tags: React.ReactNode;
+}) {
+  return (
+    <div className="skill-detail-head-main">
+      <InitialBadge label={displayName} large />
+      <div className="skill-detail-head-copy">
+        <div className="eyebrow">{eyebrow}</div>
+        <h2>{displayName}</h2>
+        <p>{description}</p>
+        <small>{meta}</small>
+        <div className="pill-row">{tags}</div>
+      </div>
+    </div>
+  );
+}
+
+function skillDetailActions({
+  skill,
+  workspace,
+  ui
+}: {
+  skill: SkillSummary;
+  workspace: P1WorkspaceState;
+  ui: DesktopUIState;
+}) {
+  return (
+    <div className="skill-detail-action-bar">
+      {skill.installState === "not_installed" ? (
+        <button className="btn btn-primary" type="button" onClick={() => ui.openInstallConfirm(skill, "install")}>安装</button>
+      ) : null}
+      {skill.installState === "update_available" ? (
+        <button className="btn btn-primary" type="button" onClick={() => ui.openInstallConfirm(skill, "update")}>更新</button>
+      ) : null}
+      {skill.localVersion ? (
+        <button className="btn" type="button" onClick={() => ui.openTargetsModal(skill)}>启用范围</button>
+      ) : null}
+      <button className="btn" type="button" onClick={() => void workspace.toggleStar(skill.skillID)}>
+        {skill.starred ? "取消收藏" : "收藏"}
+      </button>
+    </div>
+  );
+}
+
+function skillVersionHistory(skill: SkillSummary): NonNullable<SkillSummary["versions"]> {
+  const versions = [...(skill.versions ?? [])];
+  if (!versions.some((version) => version.version === skill.version)) {
+    versions.push({
+      version: skill.version,
+      publishedAt: skill.currentVersionUpdatedAt,
+      changelog: skill.reviewSummary ?? undefined,
+      riskLevel: skill.riskLevel
+    });
+  }
+  return versions.sort((left, right) => {
+    const rightTime = Date.parse(right.publishedAt);
+    const leftTime = Date.parse(left.publishedAt);
+    if (Number.isFinite(rightTime) && Number.isFinite(leftTime) && rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+    return right.version.localeCompare(left.version, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
 function SkillDetailOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceState; ui: DesktopUIState; overlay: OverlayState }) {
   if (overlay.kind !== "skill_detail") return null;
-  const skill = workspace.skills.find((item) => item.skillID === overlay.skillID) ?? workspace.installedSkills.find((item) => item.skillID === overlay.skillID) ?? workspace.selectedSkill;
+  const skill =
+    workspace.skills.find((item) => item.skillID === overlay.skillID) ??
+    workspace.installedSkills.find((item) => item.skillID === overlay.skillID) ??
+    (workspace.selectedSkill?.skillID === overlay.skillID ? workspace.selectedSkill : null);
+  const fallback = skill ? null : fallbackSkillDetail({
+    adminSkill: workspace.adminData.adminSkills.find((item) => item.skillID === overlay.skillID),
+    publisherSkill: workspace.publisherData.publisherSkills.find((item) => item.skillID === overlay.skillID),
+    selectedSubmission: workspace.publisherData.selectedPublisherSubmission,
+    language: ui.language
+  });
+  if (!skill && !fallback) return null;
+
+  if (!skill && fallback) {
+    return (
+      <ModalFrame
+        title={fallback.displayName}
+        eyebrow="Skill 详情"
+        onClose={ui.closeOverlay}
+        full
+        panelClassName="skill-detail-modal"
+        headerContent={skillDetailHead({
+          displayName: fallback.displayName,
+          eyebrow: "Skill 详情",
+          description: fallback.description,
+          meta: `${fallback.skillID} · ${fallback.owner}${fallback.department ? ` · ${fallback.department}` : ""}`,
+          tags: (
+            <>
+              <TagPill tone={fallback.statusTone}>{fallback.statusLabel}</TagPill>
+              {fallback.risk ? <TagPill tone={riskToneClass(fallback.risk)}>{fallbackRiskLabel(fallback.risk, ui.language)}</TagPill> : null}
+              <TagPill tone="neutral">{fallback.category}</TagPill>
+            </>
+          )
+        })}
+      >
+        <div className="skill-detail-page">
+          <section className="skill-detail-section">
+            <div className="definition-grid split">
+              <div><dt>版本</dt><dd>{fallback.version}</dd></div>
+              <div><dt>公开级别</dt><dd>{fallback.visibility}</dd></div>
+              <div><dt>指标</dt><dd>{fallback.metrics.join(" · ")}</dd></div>
+              <div><dt>最近更新</dt><dd>{formatDate(fallback.updatedAt, ui.language)}</dd></div>
+            </div>
+          </section>
+          <section className="skill-detail-section">
+            <div className="detail-column-head">
+              <h3>当前摘要</h3>
+            </div>
+            <p>{fallback.summary}</p>
+            <small>{fallback.sourceLabel}</small>
+          </section>
+        </div>
+      </ModalFrame>
+    );
+  }
   if (!skill) return null;
 
+  const versions = skillVersionHistory(skill);
+  const readme = skill.readme?.trim();
+  const reviewText = skill.reviewSummary ?? "当前版本已准备就绪。";
+  const riskText = skill.riskDescription ?? "暂无额外风险说明。";
+
   return (
-    <ModalFrame title={skill.displayName} eyebrow="Skill 详情" onClose={ui.closeOverlay} full>
-      <div className="skill-detail-layout">
-        <section className="stage-panel">
-          <div className="detail-hero">
-            <InitialBadge label={skill.displayName} large />
-            <div>
-              <div className="pill-row">
-                <TagPill tone={statusTone(skill)}>{statusLabel(skill, ui.language)}</TagPill>
-                <TagPill tone={skill.riskLevel === "high" ? "danger" : skill.riskLevel === "medium" ? "warning" : "info"}>{riskLabel(skill, ui.language)}</TagPill>
-              </div>
-              <h3>{skill.displayName}</h3>
-              <p>{skill.description}</p>
-              <small>{skill.skillID} · {skill.authorName} · {skill.authorDepartment}</small>
-            </div>
-          </div>
-          <div className="definition-grid split">
-            <div><dt>版本</dt><dd>v{skill.version}</dd></div>
+    <ModalFrame
+      title={skill.displayName}
+      eyebrow="Skill 详情"
+      onClose={ui.closeOverlay}
+      full
+      panelClassName="skill-detail-modal"
+      headerContent={skillDetailHead({
+        displayName: skill.displayName,
+        eyebrow: "Skill 详情",
+        description: skill.description,
+        meta: `${skill.skillID} · ${skill.authorName ?? "未知作者"} · ${skill.authorDepartment ?? "未标注部门"}`,
+        tags: (
+          <>
+            <TagPill tone={statusTone(skill)}>{statusLabel(skill, ui.language)}</TagPill>
+            <TagPill tone={riskToneClass(skill.riskLevel)}>{riskLabel(skill, ui.language)}</TagPill>
+            <TagPill tone="neutral">{skill.category}</TagPill>
+          </>
+        )
+      })}
+      headActions={skillDetailActions({ skill, workspace, ui })}
+    >
+      <div className="skill-detail-page">
+        <section className="skill-detail-section">
+          <div className="definition-grid split skill-detail-meta-grid">
+            <div><dt>当前版本</dt><dd>v{skill.version}</dd></div>
+            <div><dt>本地版本</dt><dd>{skill.localVersion ? `v${skill.localVersion}` : "未安装"}</dd></div>
             <div><dt>Star</dt><dd>{skill.starCount}</dd></div>
             <div><dt>下载量</dt><dd>{skill.downloadCount}</dd></div>
             <div><dt>最近更新</dt><dd>{formatDate(skill.currentVersionUpdatedAt, ui.language)}</dd></div>
+            <div><dt>公开级别</dt><dd>{publishVisibilityLabel(skill.visibilityLevel, ui.language)}</dd></div>
           </div>
-          <div className="detail-block">
+        </section>
+
+        <section className="skill-detail-section">
+          <div className="detail-column-head">
             <h3>兼容与状态</h3>
+          </div>
+          <div className="skill-detail-tag-group">
             <div className="pill-row">
               {skill.compatibleTools.map((tool) => <TagPill key={tool} tone="info">{tool}</TagPill>)}
               {skill.compatibleSystems.map((system) => <TagPill key={system} tone="neutral">{system}</TagPill>)}
             </div>
+            {skill.tags.length > 0 ? (
+              <div className="pill-row">
+                {skill.tags.map((tag) => <TagPill key={tag} tone="neutral">{tag}</TagPill>)}
+              </div>
+            ) : null}
           </div>
-          <div className="detail-block">
-            <h3>已启用位置</h3>
-            {skill.enabledTargets.length === 0 ? <p>当前还没有启用位置。</p> : null}
-            <div className="stack-list compact">
-              {skill.enabledTargets.map((target) => (
-                <div className="micro-row" key={`${target.targetType}:${target.targetID}`}>
-                  <strong>{target.targetName}</strong>
-                  <small>{target.targetPath}</small>
-                </div>
-              ))}
+          <div className="skill-detail-note-grid">
+            <div>
+              <strong>审核摘要</strong>
+              <p>{reviewText}</p>
+            </div>
+            <div>
+              <strong>风险说明</strong>
+              <p>{riskText}</p>
             </div>
           </div>
         </section>
-        <aside className="stage-panel detail-side-panel">
-          <div className="detail-block">
-            <h3>主操作</h3>
-            <div className="inline-actions wrap">
-              {skill.installState === "not_installed" ? (
-                <button className="btn btn-primary" type="button" onClick={() => ui.openInstallConfirm(skill, "install")}>安装</button>
-              ) : null}
-              {skill.installState === "update_available" ? (
-                <button className="btn btn-primary" type="button" onClick={() => ui.openInstallConfirm(skill, "update")}>更新</button>
-              ) : null}
-              {skill.localVersion ? (
-                <button className="btn" type="button" onClick={() => ui.openTargetsModal(skill)}>启用范围</button>
-              ) : null}
-              <button className="btn" type="button" onClick={() => void workspace.toggleStar(skill.skillID)}>
-                {skill.starred ? "取消收藏" : "收藏"}
-              </button>
-            </div>
+
+        <section className="skill-detail-section">
+          <div className="detail-column-head">
+            <h3>已启用位置</h3>
           </div>
-          <div className="detail-block">
-            <h3>最近变化</h3>
-            <p>{skill.reviewSummary ?? skill.readme ?? "当前版本已准备就绪，可直接查看范围、状态与安装动作。"}</p>
+          {skill.enabledTargets.length === 0 ? <p className="muted-copy">当前还没有启用位置。</p> : null}
+          <div className="stack-list compact">
+            {skill.enabledTargets.map((target) => (
+              <div className="micro-row" key={`${target.targetType}:${target.targetID}`}>
+                <strong>{target.targetName}</strong>
+                <small>{target.targetPath}</small>
+              </div>
+            ))}
           </div>
-        </aside>
+        </section>
+
+        <section className="skill-detail-section">
+          <div className="detail-column-head">
+            <h3>版本历史</h3>
+          </div>
+          <div className="version-history-list">
+            {versions.map((version) => {
+              const isCurrent = version.version === skill.version;
+              const risk = version.riskLevel ?? "unknown";
+              return (
+                <article className="version-history-row" key={`${version.version}:${version.publishedAt}`}>
+                  <div className="version-history-row-head">
+                    <div>
+                      <strong>v{version.version}</strong>
+                      <small>{formatDate(version.publishedAt, ui.language)}</small>
+                    </div>
+                    <div className="pill-row">
+                      {isCurrent ? <TagPill tone="success">当前版本</TagPill> : null}
+                      <TagPill tone={riskToneClass(risk)}>{fallbackRiskLabel(risk, ui.language)}</TagPill>
+                    </div>
+                  </div>
+                  <p>{version.changelog ?? (isCurrent ? reviewText : "暂无变更说明。")}</p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="skill-detail-section skill-readme-section">
+          <div className="detail-column-head">
+            <h3>README.md</h3>
+          </div>
+          {readme ? (
+            <article className="markdown-preview skill-readme-body" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(readme) }} />
+          ) : (
+            <SectionEmpty title="暂无 README.md" body="发布包中没有可展示的 README.md。" />
+          )}
+        </section>
       </div>
     </ModalFrame>
   );
@@ -664,6 +1250,16 @@ function splitCSV(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function toggleStringItem(items: string[], item: string, maxItems?: number): string[] {
+  if (items.includes(item)) {
+    return items.filter((current) => current !== item);
+  }
+  if (maxItems && items.length >= maxItems) {
+    return items;
+  }
+  return [...items, item];
 }
 
 function bumpPatchVersion(version: string): string {
@@ -800,8 +1396,42 @@ function DraftWorkspace({
               </label>
             ) : null}
             <SelectField label="公开级别" value={draft.visibility} options={["private", "summary_visible", "detail_visible", "public_installable"]} onChange={(value) => setDraft((current) => ({ ...current, visibility: value as PublishDraft["visibility"] }))} />
-            <label className="field"><span>分类</span><input value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))} /></label>
-            <label className="field"><span>标签（逗号分隔）</span><input value={tagInput} onChange={(event) => { const value = event.target.value; setTagInput(value); setDraft((current) => ({ ...current, tags: splitCSV(value) })); }} /></label>
+            <label className="field">
+              <span>分类</span>
+              <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}>
+                <option value="">请选择分类</option>
+                {SKILL_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </label>
+            <div className="field">
+              <span>标签</span>
+              <div className="tag-row compact">
+                {SKILL_TAGS.map((tag) => {
+                  const active = draft.tags.includes(tag);
+                  const disabled = !active && draft.tags.length >= 5;
+                  return (
+                    <button
+                      key={tag}
+                      className={active ? "tag-filter active" : "tag-filter"}
+                      type="button"
+                      disabled={disabled}
+                      aria-pressed={active}
+                      onClick={() => {
+                        setDraft((current) => {
+                          const tags = toggleStringItem(current.tags, tag, 5);
+                          setTagInput(tags.join(", "));
+                          return { ...current, tags };
+                        });
+                      }}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <label className="field"><span>适用工具（逗号分隔）</span><input value={toolInput} onChange={(event) => { const value = event.target.value; setToolInput(value); setDraft((current) => ({ ...current, compatibleTools: splitCSV(value) })); }} /></label>
             <label className="field"><span>适用系统（逗号分隔）</span><input value={systemInput} onChange={(event) => { const value = event.target.value; setSystemInput(value); setDraft((current) => ({ ...current, compatibleSystems: splitCSV(value) })); }} /></label>
             <div className="inline-actions wrap">
@@ -911,7 +1541,7 @@ function PublisherOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceSt
     selectedDepartmentIDs: [],
     visibility: "private",
     changelog: "",
-    category: "uncategorized",
+    category: "",
     tags: [],
     compatibleTools: [],
     compatibleSystems: ["windows"],
@@ -963,8 +1593,8 @@ function PublisherOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceSt
       selectedDepartmentIDs: sourceSubmission?.selectedDepartmentIDs ?? [],
       visibility: source?.currentVisibilityLevel ?? "private",
       changelog: "",
-      category: "uncategorized",
-      tags: [],
+      category: sourceSubmission?.category ?? source?.category ?? "",
+      tags: [...(sourceSubmission?.tags ?? source?.tags ?? [])],
       compatibleTools: [],
       compatibleSystems: ["windows"],
       files: []
@@ -988,7 +1618,7 @@ function PublisherOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceSt
     formData.set("visibilityLevel", draft.visibility);
     formData.set("changelog", draft.changelog);
     formData.set("category", draft.category);
-    formData.set("tags", JSON.stringify(splitCSV(tagInput)));
+    formData.set("tags", JSON.stringify(draft.tags));
     formData.set("compatibleTools", JSON.stringify(splitCSV(toolInput)));
     formData.set("compatibleSystems", JSON.stringify(splitCSV(systemInput)));
     for (const entry of uploadEntries) {
@@ -1027,7 +1657,6 @@ function PublisherOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceSt
           <aside className="publisher-side">
             <button className={composerOpen ? "sidebar-switch active" : "sidebar-switch"} type="button" onClick={() => { setComposerOpen(true); ui.setPublisherPane("compose"); }}>
               <span>发布</span>
-              <small>起草工作区</small>
             </button>
             <button className={!composerOpen ? "sidebar-switch active" : "sidebar-switch"} type="button" onClick={() => { setComposerOpen(false); ui.setPublisherPane("mine"); }}>
               <span>我的</span>
@@ -1115,7 +1744,7 @@ function PublisherOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceSt
                 </section>
                 <section className="stage-panel detail-panel wide">
                   {!selectedSubmission ? (
-                    <SectionEmpty title="选择一条提交查看详情" body="右侧会显示提交详情、包预览、预检查和历史时间线。" />
+                    <SectionEmpty title="选择一条提交查看详情" />
                   ) : (
                     <>
                       <div className="detail-hero compact">
@@ -1184,87 +1813,6 @@ function PublisherOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceSt
   );
 }
 
-function DiagnosticsOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceState; ui: DesktopUIState; overlay: OverlayState }) {
-  if (overlay.kind !== "diagnostics") return null;
-
-  const abnormalTargets = workspace.scanTargets.filter((summary) => summary.lastError || summary.counts.unmanaged + summary.counts.conflict + summary.counts.orphan > 0);
-
-  return (
-    <ModalFrame title="诊断" eyebrow="本地扫描" onClose={ui.closeOverlay} full>
-      <div className="overlay-grid two-columns">
-        <section className="stage-panel">
-          <div className="section-header">
-            <div>
-              <div className="eyebrow">扫描摘要</div>
-              <h2>目标诊断</h2>
-              <p>工具和项目的扫描异常会集中显示在这里。</p>
-            </div>
-            <button className="btn btn-small" type="button" onClick={() => void workspace.scanLocalTargets()}>
-              <RefreshCw size={14} />
-              重新扫描
-            </button>
-          </div>
-          {abnormalTargets.length === 0 ? <SectionEmpty title="当前没有异常目标" body="工具与项目的扫描异常会集中显示在这里。" /> : null}
-          <div className="stack-list">
-            {abnormalTargets.map((summary) => (
-              <article className="panel-lite" key={summary.id}>
-                <div className="inline-heading">
-                  <div>
-                    <strong>{summary.targetName}</strong>
-                    <p>{summary.targetPath}</p>
-                  </div>
-                  <TagPill tone="warning">{summary.targetType === "tool" ? "工具" : "项目"}</TagPill>
-                </div>
-                <div className="pill-row">
-                  <TagPill tone="info">托管 {summary.counts.managed}</TagPill>
-                  <TagPill tone="warning">异常 {summary.counts.unmanaged + summary.counts.conflict + summary.counts.orphan}</TagPill>
-                </div>
-                {summary.lastError ? <div className="callout warning"><AlertTriangle size={16} /> {summary.lastError}</div> : null}
-                <div className="stack-list compact">
-                  {summary.findings.filter((finding) => finding.kind !== "managed").slice(0, 4).map((finding) => (
-                    <div className="micro-row" key={finding.id}>
-                      <strong>{finding.relativePath}</strong>
-                      <small>{finding.message}</small>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-        <section className="stage-panel">
-          <OverlaySectionHeader title="未托管 / 冲突资产" eyebrow="发现" description="本地目录里的 unmanaged / orphan / conflict 结果会显示在这里。" />
-          {workspace.discoveredLocalSkills.length === 0 ? <SectionEmpty title="没有发现游离副本" body="本地目录里的 unmanaged / orphan / conflict 结果会显示在这里。" /> : null}
-          <div className="stack-list">
-            {workspace.discoveredLocalSkills.map((skill) => (
-              <article className="panel-lite" key={skill.skillID}>
-                <div className="inline-heading">
-                  <div>
-                    <strong>{skill.displayName}</strong>
-                    <p>{skill.skillID}</p>
-                  </div>
-                  <div className="pill-row">
-                    <TagPill tone="warning">{skill.sourceLabel}</TagPill>
-                    {skill.matchedMarketSkill ? <TagPill tone="info">市场已存在</TagPill> : null}
-                  </div>
-                </div>
-                <div className="stack-list compact">
-                  {skill.targets.slice(0, 4).map((target, index) => (
-                    <div className="micro-row" key={`${skill.skillID}:${target.targetType}:${target.targetID}:${index}`}>
-                      <strong>{target.targetName}</strong>
-                      <small>{target.message}</small>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
-    </ModalFrame>
-  );
-}
-
 export function FlashToast({ flash, onClear }: { flash: FlashMessage | null; onClear: () => void }) {
   useEffect(() => {
     if (!flash) return;
@@ -1292,12 +1840,13 @@ export function DesktopOverlays({ workspace, ui }: { workspace: P1WorkspaceState
         <ConfirmModal ui={ui} />
         <ProgressModal workspace={workspace} ui={ui} />
         <TargetsModal workspace={workspace} ui={ui} />
+        <LocalImportModal workspace={workspace} ui={ui} />
         <ToolEditorModal ui={ui} />
         <ProjectEditorModal ui={ui} />
         <ConnectionStatusModal workspace={workspace} ui={ui} />
         <AppUpdateModal ui={ui} />
         <SettingsModal workspace={workspace} ui={ui} />
-        <DiagnosticsOverlay workspace={workspace} ui={ui} overlay={ui.overlay} />
+        <SkillDetailOverlay workspace={workspace} ui={ui} overlay={ui.overlay} />
       </>
     </OverlayPortal>
   );

@@ -1,6 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { UserSummary } from '../common/p1-contracts';
 import { assertSkillStatusTransition } from '../admin/skill-status';
 import { DatabaseService } from '../database/database.service';
 import { PackageStorageService } from './package-storage.service';
@@ -25,13 +24,13 @@ export class PublishingSubmissionService {
   ) {}
 
   async createSubmission(
-    user: UserSummary,
+    userID: string,
     body: Record<string, string | undefined>,
     files: UploadedSubmissionFile[],
   ): Promise<{ actorUserID: string; reviewID: string }> {
-    const actor = await this.publishingRepository.loadActor(user.userID);
+    const actor = await this.publishingRepository.loadActor(userID);
     const input = parseSubmissionInput(body);
-    const currentSkill = input.submissionType === 'publish' ? null : await this.publishingRepository.loadSkillByID(input.skillID);
+    const currentSkill = await this.publishingRepository.loadSkillByID(input.skillID);
 
     if (input.submissionType === 'publish' && currentSkill) {
       throw new BadRequestException('validation_failed');

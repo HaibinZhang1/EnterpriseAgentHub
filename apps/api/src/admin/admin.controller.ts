@@ -54,8 +54,8 @@ export class AdminController {
     @Body()
     body: {
       username?: string;
+      phoneNumber?: string;
       password?: string;
-      displayName?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;
@@ -64,38 +64,39 @@ export class AdminController {
     return this.adminService.createUser(request.p1UserID ?? '', body);
   }
 
-  @Patch('users/:targetUserID')
+  @Patch('users/:phoneNumber')
   @RequireMenuPermission('admin_users')
   updateUser(
     @Req() request: P1AuthenticatedRequest,
-    @Param('targetUserID') targetUserID: string,
+    @Param('phoneNumber') phoneNumber: string,
     @Body()
     body: {
-      displayName?: string;
+      username?: string;
+      phoneNumber?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;
     },
   ) {
-    return this.adminService.updateUser(request.p1UserID ?? '', targetUserID, body);
+    return this.adminService.updateUser(request.p1UserID ?? '', phoneNumber, body);
   }
 
-  @Post('users/:targetUserID/freeze')
+  @Post('users/:phoneNumber/freeze')
   @RequireMenuPermission('admin_users')
-  freezeUser(@Req() request: P1AuthenticatedRequest, @Param('targetUserID') targetUserID: string) {
-    return this.adminService.freezeUser(request.p1UserID ?? '', targetUserID, 'frozen');
+  freezeUser(@Req() request: P1AuthenticatedRequest, @Param('phoneNumber') phoneNumber: string) {
+    return this.adminService.freezeUser(request.p1UserID ?? '', phoneNumber, 'frozen');
   }
 
-  @Post('users/:targetUserID/unfreeze')
+  @Post('users/:phoneNumber/unfreeze')
   @RequireMenuPermission('admin_users')
-  unfreezeUser(@Req() request: P1AuthenticatedRequest, @Param('targetUserID') targetUserID: string) {
-    return this.adminService.freezeUser(request.p1UserID ?? '', targetUserID, 'active');
+  unfreezeUser(@Req() request: P1AuthenticatedRequest, @Param('phoneNumber') phoneNumber: string) {
+    return this.adminService.freezeUser(request.p1UserID ?? '', phoneNumber, 'active');
   }
 
-  @Delete('users/:targetUserID')
+  @Delete('users/:phoneNumber')
   @RequireMenuPermission('admin_users')
-  deleteUser(@Req() request: P1AuthenticatedRequest, @Param('targetUserID') targetUserID: string) {
-    return this.adminService.deleteUser(request.p1UserID ?? '', targetUserID);
+  deleteUser(@Req() request: P1AuthenticatedRequest, @Param('phoneNumber') phoneNumber: string) {
+    return this.adminService.deleteUser(request.p1UserID ?? '', phoneNumber);
   }
 
   @Get('skills')

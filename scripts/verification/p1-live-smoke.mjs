@@ -5,11 +5,11 @@ import process from "node:process";
 const baseURL = normalizeBaseURL(process.env.P1_LIVE_BASE_URL ?? "http://127.0.0.1:3000");
 const requireHealthOk = process.env.P1_REQUIRE_HEALTH_OK !== "false";
 const normalCredentials = {
-  username: process.env.P1_LIVE_USERNAME ?? "demo",
+  phoneNumber: process.env.P1_LIVE_PHONE_NUMBER ?? "13800000001",
   password: process.env.P1_LIVE_PASSWORD ?? "demo123"
 };
 const adminCredentials = {
-  username: process.env.P1_LIVE_ADMIN_USERNAME ?? "superadmin",
+  phoneNumber: process.env.P1_LIVE_ADMIN_PHONE_NUMBER ?? "13800000002",
   password: process.env.P1_LIVE_ADMIN_PASSWORD ?? "demo123"
 };
 
@@ -27,11 +27,11 @@ async function main() {
 
   const userHeaders = authHeaders(userSession.accessToken);
   const bootstrap = await requestJSON("/desktop/bootstrap", { headers: userHeaders });
-  assert.equal(bootstrap.user.userID, userSession.user.userID, "bootstrap user mismatch");
+  assert.equal(bootstrap.user.phoneNumber, userSession.user.phoneNumber, "bootstrap user mismatch");
   assert.ok(Array.isArray(bootstrap.navigation), "bootstrap navigation missing");
   assert.ok(bootstrap.navigation.includes("market"), "bootstrap missing market");
-  assert.ok(!bootstrap.navigation.includes("manage"), "normal user should not have manage navigation");
-  assert.ok(!bootstrap.navigation.includes("review"), "normal user should not have review navigation");
+  assertAdminPermissionsAbsent(bootstrap.navigation, "normal user navigation");
+  assertAdminPermissionsAbsent(bootstrap.menuPermissions, "normal user menu permissions");
   assert.equal(bootstrap.features.publishSkill, true, "normal user should have publishSkill enabled");
 
   const skills = await requestJSON("/skills", { headers: userHeaders });
@@ -46,8 +46,8 @@ async function main() {
   const adminSession = await login(adminCredentials);
   const adminHeaders = authHeaders(adminSession.accessToken);
   const adminBootstrap = await requestJSON("/desktop/bootstrap", { headers: adminHeaders });
-  assert.ok(adminBootstrap.navigation.includes("manage"), "admin missing manage navigation");
-  assert.ok(adminBootstrap.navigation.includes("review"), "admin missing review navigation");
+  assertAdminPermissionsPresent(adminBootstrap.navigation, "admin navigation");
+  assertAdminPermissionsPresent(adminBootstrap.menuPermissions, "admin menu permissions");
 
   const adminUsers = await requestJSON("/admin/users", { headers: adminHeaders });
   assert.ok(Array.isArray(adminUsers), "admin users payload must be an array");
@@ -57,8 +57,8 @@ async function main() {
 
   console.log(`P1 live smoke PASS (${baseURL})`);
   console.log(`- health: ${health.status}`);
-  console.log(`- normal user: ${normalCredentials.username}`);
-  console.log(`- admin user: ${adminCredentials.username}`);
+  console.log(`- normal user: ${normalCredentials.phoneNumber}`);
+  console.log(`- admin user: ${adminCredentials.phoneNumber}`);
   console.log(`- skills: ${skills.items.length}`);
   console.log(`- notifications: ${notifications.items.length}`);
   console.log(`- publisher skills: ${publisherSkills.length}`);
@@ -80,6 +80,18 @@ function authHeaders(accessToken) {
   return {
     authorization: `Bearer ${accessToken}`
   };
+}
+
+function assertAdminPermissionsPresent(items, label) {
+  for (const permission of ["review", "admin_departments", "admin_users", "admin_skills"]) {
+    assert.ok(items.includes(permission), `${label} missing ${permission}`);
+  }
+}
+
+function assertAdminPermissionsAbsent(items, label) {
+  for (const permission of ["review", "admin_departments", "admin_users", "admin_skills"]) {
+    assert.ok(!items.includes(permission), `${label} should not include ${permission}`);
+  }
 }
 
 async function requestJSON(path, init = {}) {

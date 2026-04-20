@@ -32,34 +32,34 @@ export function createAdminClient() {
       return requestJSON<AdminUser[]>(P1_API_ROUTES.adminUsers);
     },
 
-    async createAdminUser(input: { username: string; password: string; displayName: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]> {
+    async createAdminUser(input: { username: string; phoneNumber: string; password: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]> {
       return requestJSON<AdminUser[]>(P1_API_ROUTES.adminUsers, {
         method: "POST",
         body: JSON.stringify(input)
       });
     },
 
-    async updateAdminUser(targetUserID: string, input: { displayName?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }): Promise<AdminUser[]> {
-      return requestJSON<AdminUser[]>(routePath(P1_API_ROUTES.adminUserDetail, { targetUserID }), {
+    async updateAdminUser(phoneNumber: string, input: { username?: string; phoneNumber?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }): Promise<AdminUser[]> {
+      return requestJSON<AdminUser[]>(routePath(P1_API_ROUTES.adminUserDetail, { phoneNumber }), {
         method: "PATCH",
         body: JSON.stringify(input)
       });
     },
 
-    async freezeAdminUser(targetUserID: string): Promise<AdminUser[]> {
-      return requestJSON<AdminUser[]>(routePath(P1_API_ROUTES.adminUserFreeze, { targetUserID }), {
+    async freezeAdminUser(phoneNumber: string): Promise<AdminUser[]> {
+      return requestJSON<AdminUser[]>(routePath(P1_API_ROUTES.adminUserFreeze, { phoneNumber }), {
         method: "POST"
       });
     },
 
-    async unfreezeAdminUser(targetUserID: string): Promise<AdminUser[]> {
-      return requestJSON<AdminUser[]>(routePath(P1_API_ROUTES.adminUserUnfreeze, { targetUserID }), {
+    async unfreezeAdminUser(phoneNumber: string): Promise<AdminUser[]> {
+      return requestJSON<AdminUser[]>(routePath(P1_API_ROUTES.adminUserUnfreeze, { phoneNumber }), {
         method: "POST"
       });
     },
 
-    async deleteAdminUser(targetUserID: string): Promise<void> {
-      await requestJSON<{ ok: true }>(routePath(P1_API_ROUTES.adminUserDetail, { targetUserID }), {
+    async deleteAdminUser(phoneNumber: string): Promise<void> {
+      await requestJSON<{ ok: true }>(routePath(P1_API_ROUTES.adminUserDetail, { phoneNumber }), {
         method: "DELETE"
       });
     },

@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } fro
 import { MenuPermissionGuard } from '../auth/menu-permission.guard';
 import { P1AuthenticatedRequest, P1AuthGuard } from '../auth/p1-auth.guard';
 import { RequireMenuPermission } from '../auth/require-menu-permission.decorator';
-import { DownloadTicketResponse, PageResponse, SkillDetail, SkillSummary } from '../common/p1-contracts';
+import { DownloadTicketResponse, PageResponse, SkillDetail, SkillLeaderboardsResponse, SkillSummary } from '../common/p1-contracts';
 import { DownloadTicketRequest, SkillListQuery, SkillsService } from './skills.service';
 
 @Controller('skills')
@@ -14,6 +14,11 @@ export class SkillsController {
   @Get()
   list(@Req() request: P1AuthenticatedRequest, @Query() query: SkillListQuery): Promise<PageResponse<SkillSummary>> {
     return this.skillsService.list(query, request.p1UserID ?? undefined);
+  }
+
+  @Get('leaderboards')
+  leaderboards(@Req() request: P1AuthenticatedRequest): Promise<SkillLeaderboardsResponse> {
+    return this.skillsService.leaderboards(request.p1UserID ?? undefined);
   }
 
   @Get(':skillID')

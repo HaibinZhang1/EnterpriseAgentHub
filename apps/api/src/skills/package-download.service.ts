@@ -51,6 +51,14 @@ export class PackageDownloadService {
       purpose: 'published',
       requiresAuth: false,
     });
+    if (userID && (request.purpose ?? 'install') === 'install') {
+      await this.repository.recordDownloadEvent({
+        userID,
+        skillRowID: row.id,
+        version: packageRow.version,
+        purpose: 'install',
+      });
+    }
     logInfo({
       event: 'skills.download_ticket.issued',
       domain: 'skills-market',

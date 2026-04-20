@@ -7,9 +7,9 @@ import path from "node:path";
 
 const artifactDir = requiredEnv("EAH_FULL_CLOSURE_ARTIFACT_DIR");
 const apiBaseURL = requiredEnv("EAH_FULL_CLOSURE_API_BASE_URL");
-const outsiderCredentials = { username: "author_ops", password: "demo123" };
-const adminCredentials = { username: "frontadmin", password: "demo123" };
-const authorCredentials = { username: "demo", password: "demo123" };
+const outsiderCredentials = { phoneNumber: "13800000007", username: "赵六", password: "demo123" };
+const adminCredentials = { phoneNumber: "13800000004", username: "前端组管理员", password: "demo123" };
+const authorCredentials = { phoneNumber: "13800000001", username: "张三", password: "demo123" };
 const runSuffix = Date.now().toString(36);
 
 test.describe.configure({ mode: "serial" });
@@ -53,7 +53,7 @@ test("happy path publishes same skill through review and exposes installable mar
     await expect(card).toContainText(displayName);
     await card.locator(".skill-row-main").click();
     await expect(page.getByText(skillID, { exact: false })).toBeVisible();
-    await expect(page.getByRole("button", { name: "安装" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "安装", exact: true })).toBeVisible();
 
     writeArtifact("happy-path.json", {
       apiBaseURL,
@@ -103,7 +103,7 @@ test("author and reviewer can preview package docs and author can delist relist 
 
     await waitForMarketVisibility(skillID, authorCredentials);
     await page.reload();
-    await page.getByTestId("nav-my_installed").click();
+    await page.getByTestId("nav-market").click();
     await page.getByTestId("my-skills-published-tab").click();
     const publisherRow = page.locator(`[data-testid="publisher-skill-row"][data-skill-id="${skillID}"]`);
     await publisherRow.getByRole("button", { name: "查看详情" }).click();
@@ -112,17 +112,14 @@ test("author and reviewer can preview package docs and author can delist relist 
     await expect(page.getByTestId("package-file-preview")).toContainText(`${skillID}:1.0.0`);
 
     await publisherRow.getByRole("button", { name: "下架" }).click();
-    await page.getByRole("button", { name: "确认下架" }).click();
     await expect.poll(async () => marketResultCount(skillID, await loginToken(authorCredentials)), { timeout: 30_000 }).toBe(0);
     await expect(publisherRow.getByRole("button", { name: "上架" })).toBeVisible();
 
     await publisherRow.getByRole("button", { name: "上架" }).click();
-    await page.getByRole("button", { name: "确认上架" }).click();
     await expect.poll(async () => marketResultCount(skillID, await loginToken(authorCredentials)), { timeout: 30_000 }).toBeGreaterThan(0);
     await expect(publisherRow.getByRole("button", { name: "下架" })).toBeVisible();
 
     await publisherRow.getByRole("button", { name: "归档" }).click();
-    await page.getByRole("button", { name: "确认归档" }).click();
     await expect.poll(async () => marketResultCount(skillID, await loginToken(authorCredentials)), { timeout: 30_000 }).toBe(0);
     await expect(publisherRow.getByRole("button", { name: "下架" })).toHaveCount(0);
     await expect(publisherRow.getByRole("button", { name: "上架" })).toHaveCount(0);
@@ -160,8 +157,8 @@ test("return and resubmit flow publishes after second review", async ({ browser,
       await adminPage.context().close();
     }
 
-    await page.getByTestId("nav-my_installed").click();
-    await page.getByTestId("nav-my_installed").click();
+    await page.reload();
+    await page.getByTestId("nav-market").click();
     await page.getByTestId("my-skills-published-tab").click();
     await page.locator(`[data-testid="publisher-skill-row"][data-skill-id="${skillID}"]`).getByRole("button", { name: "重新提交" }).click();
     await page.getByTestId("publish-description").fill("Return and resubmit skill v2");
@@ -264,12 +261,12 @@ test("permission change keeps old visibility until approval and switches after a
       const beforeCard = outsiderPage.locator(`[data-testid="market-skill-card"][data-skill-id="${skillID}"]`);
       await expect(beforeCard).toBeVisible();
       await beforeCard.locator(".skill-row-main").click();
-      await expect(outsiderPage.getByRole("button", { name: "安装" })).toBeVisible();
+      await expect(outsiderPage.getByRole("button", { name: "安装", exact: true })).toBeVisible();
     } finally {
       await outsiderPage.context().close();
     }
 
-    await page.getByTestId("nav-my_installed").click();
+    await page.getByTestId("nav-market").click();
     await page.getByTestId("my-skills-published-tab").click();
     await page.locator(`[data-testid="publisher-skill-row"][data-skill-id="${skillID}"]`).getByRole("button", { name: "修改权限" }).click();
     await page.getByTestId("publish-description").fill("Permission-change skill");
@@ -285,7 +282,7 @@ test("permission change keeps old visibility until approval and switches after a
       const card = outsiderBeforeApproval.locator(`[data-testid="market-skill-card"][data-skill-id="${skillID}"]`);
       await expect(card).toBeVisible();
       await card.locator(".skill-row-main").click();
-      await expect(outsiderBeforeApproval.getByRole("button", { name: "安装" })).toBeVisible();
+      await expect(outsiderBeforeApproval.getByRole("button", { name: "安装", exact: true })).toBeVisible();
     } finally {
       await outsiderBeforeApproval.context().close();
     }
@@ -304,8 +301,9 @@ test("permission change keeps old visibility until approval and switches after a
       const card = outsiderAfterApproval.locator(`[data-testid="market-skill-card"][data-skill-id="${skillID}"]`);
       await expect(card).toBeVisible();
       await card.locator(".skill-row-main").click();
-      await expect(outsiderAfterApproval.getByRole("button", { name: "安装" })).toHaveCount(0);
-      await expect(outsiderAfterApproval.getByText("摘要详情")).toBeVisible();
+      await expect(outsiderAfterApproval.getByRole("button", { name: "安装", exact: true })).toHaveCount(0);
+      await expect(outsiderAfterApproval.getByText(skillID, { exact: false })).toBeVisible();
+      await expect(outsiderAfterApproval.getByText("不可安装").first()).toBeVisible();
     } finally {
       await outsiderAfterApproval.context().close();
     }
@@ -347,7 +345,7 @@ test("update flow keeps v1 live before approval and exposes v2 after approval", 
 
     await waitForMarketVisibility(skillID, authorCredentials);
     await page.reload();
-    await page.getByTestId("nav-my_installed").click();
+    await page.getByTestId("nav-market").click();
     await page.getByTestId("my-skills-published-tab").click();
     await page.locator(`[data-testid="publisher-skill-row"][data-skill-id="${skillID}"]`).getByRole("button", { name: "发布新版本" }).click();
     await page.getByTestId("publish-version").fill("1.1.0");
@@ -361,7 +359,7 @@ test("update flow keeps v1 live before approval and exposes v2 after approval", 
     await page.getByLabel("搜索市场 Skill").fill(skillID);
     const detailButton = page.locator(`[data-testid="market-skill-card"][data-skill-id="${skillID}"] .skill-row-main`);
     await detailButton.click();
-    await expect(page.getByText(/^1\.0\.0$/)).toBeVisible();
+    await expect(page.getByText(/^v1\.0\.0$/).first()).toBeVisible();
 
     const approvingAdminPage = await loginInNewContext(browser, adminCredentials);
     try {
@@ -375,7 +373,7 @@ test("update flow keeps v1 live before approval and exposes v2 after approval", 
     await page.getByTestId("nav-market").click();
     await page.getByLabel("搜索市场 Skill").fill(skillID);
     await page.locator(`[data-testid="market-skill-card"][data-skill-id="${skillID}"] .skill-row-main`).click();
-    await expect(page.getByText(/^1\.1\.0$/)).toBeVisible();
+    await expect(page.getByText(/^v1\.1\.0$/).first()).toBeVisible();
 
     writeArtifact("update-path.json", {
       apiBaseURL,
@@ -393,20 +391,20 @@ test("update flow keeps v1 live before approval and exposes v2 after approval", 
   }
 });
 
-async function loginAs(page: Page, credentials: { username: string; password: string }) {
+async function loginAs(page: Page, credentials: { phoneNumber: string; username: string; password: string }) {
   await page.goto("/");
   const loginModal = page.getByTestId("login-modal");
   if (!(await loginModal.isVisible().catch(() => false))) {
     await page.getByTestId("open-login").click();
   }
   await page.getByTestId("login-server-url").fill(apiBaseURL);
-  await page.getByTestId("login-username").fill(credentials.username);
+  await page.getByTestId("login-phone-number").fill(credentials.phoneNumber);
   await page.getByTestId("login-password").fill(credentials.password);
   await page.getByTestId("login-submit").click();
-  await expect(page.getByText(credentials.username === "demo" ? "张三" : credentials.username === "frontadmin" ? "前端组管理员" : "赵六")).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(credentials.username) })).toBeVisible();
 }
 
-async function loginInNewContext(browser: Browser, credentials: { username: string; password: string }) {
+async function loginInNewContext(browser: Browser, credentials: { phoneNumber: string; username: string; password: string }) {
   const context = await browser.newContext();
   const page = await context.newPage();
   await loginAs(page, credentials);
@@ -417,18 +415,18 @@ async function refreshWorkspace(page: Page) {
   await page.getByRole("button", { name: "Refresh" }).click();
 }
 
-async function waitForMarketVisibility(skillID: string, credentials: { username: string; password: string }) {
+async function waitForMarketVisibility(skillID: string, credentials: { phoneNumber: string; username: string; password: string }) {
   const token = await loginToken(credentials);
   await expect
     .poll(async () => marketResultCount(skillID, token), { timeout: 30_000 })
     .toBeGreaterThan(0);
 }
 
-async function loginToken(credentials: { username: string; password: string }) {
+async function loginToken(credentials: { phoneNumber: string; username: string; password: string }) {
   const response = await fetch(`${apiBaseURL}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(credentials),
+    body: JSON.stringify({ phoneNumber: credentials.phoneNumber, password: credentials.password }),
   });
   if (!response.ok) {
     throw new Error(`loginToken failed: ${response.status} ${response.statusText}`);
@@ -451,7 +449,7 @@ async function marketResultCount(skillID: string, accessToken: string) {
 }
 
 async function openPublishTab(page: Page) {
-  await page.getByTestId("nav-my_installed").click();
+  await page.getByTestId("nav-market").click();
   await page.getByTestId("my-skills-publish-tab").click();
   await expect(page.getByTestId("publish-form")).toBeVisible();
 }
@@ -478,8 +476,10 @@ async function publishSkill(page: Page, input: {
     await page.getByLabel("授权范围").selectOption(input.scope);
   }
   await page.getByLabel("公开级别").selectOption(input.visibility);
-  await page.getByTestId("publish-category").fill("engineering");
-  await page.getByTestId("publish-tags").fill(input.tags);
+  await page.getByTestId("publish-category").selectOption("开发");
+  const tagPicker = page.getByTestId("publish-tags");
+  await tagPicker.getByRole("button", { name: "代码", exact: true }).click();
+  await tagPicker.getByRole("button", { name: "审查", exact: true }).click();
   await page.getByTestId("publish-tools").fill(input.tools);
   await page.getByTestId("publish-systems").fill(input.systems);
   if (input.zipPath) {
@@ -499,7 +499,8 @@ async function replaceFolderSubmission(page: Page, folderPath: string) {
 async function approveReviewForSkill(page: Page, skillID: string, comment: string) {
   await page.getByTestId("nav-review").click();
   const row = await waitForReviewRow(page, skillID);
-  await row.getByRole("button", { name: "开始审核" }).click();
+  await row.click();
+  await page.getByTestId("review-action-claim").click();
   await page.getByTestId("review-comment").fill(comment);
   const passPrecheck = page.getByTestId("review-action-pass_precheck");
   if (await passPrecheck.isVisible().catch(() => false)) {
@@ -507,7 +508,8 @@ async function approveReviewForSkill(page: Page, skillID: string, comment: strin
     const claimedRow = await waitForReviewRow(page, skillID);
     const rowText = (await claimedRow.textContent()) ?? "";
     if (rowText.includes("待管理员审核")) {
-      await claimedRow.getByRole("button", { name: "开始审核" }).click();
+      await claimedRow.click();
+      await page.getByTestId("review-action-claim").click();
       await page.getByTestId("review-comment").fill(comment);
     }
   }
@@ -518,7 +520,8 @@ async function approveReviewForSkill(page: Page, skillID: string, comment: strin
 async function returnReviewForSkill(page: Page, skillID: string, comment: string) {
   await page.getByTestId("nav-review").click();
   const row = await waitForReviewRow(page, skillID);
-  await row.getByRole("button", { name: "开始审核" }).click();
+  await row.click();
+  await page.getByTestId("review-action-claim").click();
   await page.getByTestId("review-comment").fill(comment);
   const passPrecheck = page.getByTestId("review-action-pass_precheck");
   if (await passPrecheck.isVisible().catch(() => false)) {
@@ -526,18 +529,21 @@ async function returnReviewForSkill(page: Page, skillID: string, comment: string
     const claimedRow = await waitForReviewRow(page, skillID);
     const rowText = (await claimedRow.textContent()) ?? "";
     if (rowText.includes("待管理员审核")) {
-      await claimedRow.getByRole("button", { name: "开始审核" }).click();
+      await claimedRow.click();
+      await page.getByTestId("review-action-claim").click();
       await page.getByTestId("review-comment").fill(comment);
     }
   }
   await page.getByTestId("review-action-return_for_changes").click();
+  await expect(page.getByTestId("review-action-return_for_changes")).toHaveCount(0);
   await expect(page.getByTestId("review-detail-panel")).toContainText("退回修改");
 }
 
 async function rejectReviewForSkill(page: Page, skillID: string, comment: string) {
   await page.getByTestId("nav-review").click();
   const row = await waitForReviewRow(page, skillID);
-  await row.getByRole("button", { name: "开始审核" }).click();
+  await row.click();
+  await page.getByTestId("review-action-claim").click();
   await page.getByTestId("review-comment").fill(comment);
   const passPrecheck = page.getByTestId("review-action-pass_precheck");
   if (await passPrecheck.isVisible().catch(() => false)) {
@@ -545,11 +551,13 @@ async function rejectReviewForSkill(page: Page, skillID: string, comment: string
     const claimedRow = await waitForReviewRow(page, skillID);
     const rowText = (await claimedRow.textContent()) ?? "";
     if (rowText.includes("待管理员审核")) {
-      await claimedRow.getByRole("button", { name: "开始审核" }).click();
+      await claimedRow.click();
+      await page.getByTestId("review-action-claim").click();
       await page.getByTestId("review-comment").fill(comment);
     }
   }
   await page.getByTestId("review-action-reject").click();
+  await expect(page.getByTestId("review-action-reject")).toHaveCount(0);
   await expect(page.getByTestId("review-detail-panel")).toContainText("审核拒绝");
 }
 

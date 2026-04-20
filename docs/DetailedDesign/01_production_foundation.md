@@ -226,15 +226,15 @@ React 不直接做：
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `users` | `id, username, password_hash, display_name, department_id, role, status, created_at` | 自建账号体系；当前版本 只需登录和身份展示。 |
+| `users` | `id, username, phone_number, password_hash, display_name, department_id, role, status, created_at` | 自建账号体系；`phone_number` 是唯一登录凭证，`username` 是对外展示的用户名称且允许重名，`id` 仅作内部关联。 |
 | `departments` | `id, parent_id, name, path, level, status` | 支撑部门筛选和后续权限范围计算。 |
-| `skills` | `id, skill_id, display_name, description, author_id, department_id, status, visibility_level, current_version_id, created_at, updated_at` | Skill 主表，不存包体。 |
+| `skills` | `id, skill_id, display_name, description, author_id, department_id, status, visibility_level, category, current_version_id, created_at, updated_at` | Skill 主表，不存包体；`category` 使用固定中文短分类且不可为空。 |
 | `skill_versions` | `id, skill_id, version, readme_object_key, changelog, risk_level, review_summary, published_at, package_id` | 当前版本和历史版本元数据。 |
 | `skill_packages` | `id, skill_version_id, bucket, object_key, sha256, size_bytes, file_count, content_type, created_at` | MinIO 对象引用、Hash、大小和文件数。 |
 | `skill_assets` | `id, skill_version_id, asset_type, bucket, object_key, sha256, size_bytes` | 图标、截图、README 附件等资源对象。 |
 | `skill_authorizations` | `id, skill_id, scope_type, department_id, created_at` | 授权范围；当前版本 服务端返回 `canInstall` 结果。 |
 | `skill_tool_compatibilities` | `id, skill_id, tool_id, system` | 兼容工具和系统筛选。 |
-| `skill_tags` | `id, skill_id, tag` | 标签搜索和展示。 |
+| `skill_tags` | `id, skill_id, tag` | 固定中文短标签，用于搜索、卡片展示和社区多选筛选。 |
 | `skill_stars` | `user_id, skill_id, created_at` | Star 实时计数来源，唯一键为 `user_id + skill_id`。 |
 | `download_events` | `id, user_id, skill_id, version, purpose, created_at` | 下载计数与追踪；更新不计入下载量时按 `purpose` 区分。 |
 | `notifications` | `id, user_id, type, title, summary, object_type, object_id, read_at, created_at` | 应用内通知。 |

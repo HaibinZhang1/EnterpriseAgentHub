@@ -30,6 +30,8 @@ import type {
 } from "./publishing.types";
 
 const execFileAsync = promisify(execFile);
+const maxPackageBytes = 5 * 1024 * 1024;
+const maxPackageFileCount = 100;
 
 @Injectable()
 export class PackageStorageService {
@@ -49,7 +51,13 @@ export class PackageStorageService {
     await mkdir(normalizedDir, { recursive: true });
 
     try {
-      if (files.length === 1 && /\.zip$/i.test(files[0].originalname)) {
+      const zipUpload = files.length === 1 && /\.zip$/i.test(files[0].originalname);
+      const folderUpload = files.some((file) => /[\\/]/.test(file.originalname));
+      if (!zipUpload && !folderUpload) {
+        throw new BadRequestException("validation_failed");
+      }
+
+      if (zipUpload) {
         await writeFile(inputZipPath, files[0].buffer);
         await this.unzipFile(inputZipPath, extractDir);
         const packageRoot = await this.resolvePackageRoot(extractDir);
@@ -63,6 +71,10 @@ export class PackageStorageService {
           await mkdir(join(targetPath, ".."), { recursive: true });
           await writeFile(targetPath, file.buffer);
         }
+      }
+      const visibleFileCount = await collectDirectoryFileCount(normalizedDir);
+      if (visibleFileCount > maxPackageFileCount || !(await this.hasSkillMarkdown(normalizedDir))) {
+        throw new BadRequestException("validation_failed");
       }
       await writeFile(
         join(normalizedDir, "manifest.json"),
@@ -83,6 +95,9 @@ export class PackageStorageService {
 
       await this.zipDirectory(normalizedDir, outputZipPath);
       const buffer = await readFile(outputZipPath);
+      if (buffer.length > maxPackageBytes) {
+        throw new BadRequestException("validation_failed");
+      }
       const objectKey = `staging/${reviewID}/package.zip`;
       await this.writePackageObject(objectKey, buffer);
       return {
@@ -150,6 +165,19 @@ export class PackageStorageService {
     throw new BadRequestException("validation_failed");
   }
 
+  async readPackageMarkdownFile(bucket: string, objectKey: string, fileName: string): Promise<string | null> {
+    const packageBuffer = await this.readPackageObject(bucket, objectKey);
+    return this.withExtractedPackageBuffer(packageBuffer, async (packageRoot) => {
+      const normalizedFileName = fileName.toLowerCase();
+      const files = await collectExtractedPackageFiles(packageRoot);
+      const file = files.find((item) => item.relativePath.toLowerCase() === normalizedFileName);
+      if (!file || !isPreviewablePackageFile(file.relativePath) || packagePreviewFileType(file.relativePath) !== "markdown") {
+        return null;
+      }
+      return (await readFile(file.absolutePath)).toString("utf8");
+    });
+  }
+
   async copyObject(sourceBucket: string, sourceObjectKey: string, targetBucket: string, targetObjectKey: string): Promise<void> {
     if (this.hasMinioConfigured()) {
       const buffer = await streamToBuffer(await this.minioClient().getObject(sourceBucket, sourceObjectKey));
@@ -182,6 +210,10 @@ export class PackageStorageService {
 
   private async withExtractedReviewPackage<T>(review: ReviewRecord, callback: (packageRoot: string) => Promise<T>): Promise<T> {
     const buffer = await this.readReviewPackageBuffer(review);
+    return this.withExtractedPackageBuffer(buffer, callback);
+  }
+
+  private async withExtractedPackageBuffer<T>(buffer: Buffer, callback: (packageRoot: string) => Promise<T>): Promise<T> {
     const tempDir = await mkdtemp(join(tmpdir(), "eah-package-preview-"));
     const zipPath = join(tempDir, "package.zip");
     const extractDir = join(tempDir, "extract");
@@ -265,5 +297,18 @@ export class PackageStorageService {
         await writeFile(targetPath, await readFile(sourcePath));
       }
     }
+  }
+
+  private async hasSkillMarkdown(sourceDir: string): Promise<boolean> {
+    const entries = await readdir(sourceDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.toLowerCase() === "skill.md") {
+        return true;
+      }
+      if (entry.isDirectory() && (await this.hasSkillMarkdown(join(sourceDir, entry.name)))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

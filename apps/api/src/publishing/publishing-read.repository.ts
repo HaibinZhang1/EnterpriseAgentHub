@@ -21,7 +21,7 @@ export class PublishingReadRepository {
       `
       SELECT
         u.id AS user_id,
-        u.display_name,
+        u.username AS display_name,
         u.role,
         u.admin_level,
         u.department_id,
@@ -130,7 +130,7 @@ export class PublishingReadRepository {
         r.summary,
         r.description,
         r.review_summary,
-        reviewer.display_name AS current_reviewer_name,
+        reviewer.username AS current_reviewer_name,
         r.lock_owner_id,
         r.lock_expires_at,
         r.requested_version,
@@ -232,7 +232,7 @@ export class PublishingReadRepository {
         r.summary,
         r.description,
         r.review_summary,
-        current_reviewer.display_name AS current_reviewer_name,
+        current_reviewer.username AS current_reviewer_name,
         r.lock_owner_id,
         r.lock_expires_at,
         r.requested_version,
@@ -305,7 +305,7 @@ export class PublishingReadRepository {
       SELECT
         h.id AS history_id,
         h.action,
-        actor.display_name AS actor_name,
+        actor.username AS actor_name,
         h.comment,
         h.created_at
       FROM review_item_history h
@@ -330,7 +330,7 @@ function normalizePayload(value: unknown) {
     return {
       description: '',
       changelog: '',
-      category: 'uncategorized',
+      category: '其他',
       tags: [],
       compatibleTools: [],
       compatibleSystems: [],
@@ -340,7 +340,7 @@ function normalizePayload(value: unknown) {
   return {
     description: typeof candidate.description === 'string' ? candidate.description : '',
     changelog: typeof candidate.changelog === 'string' ? candidate.changelog : '',
-    category: typeof candidate.category === 'string' ? candidate.category : 'uncategorized',
+    category: typeof candidate.category === 'string' && candidate.category ? candidate.category : '其他',
     tags: Array.isArray(candidate.tags) ? candidate.tags.filter((item): item is string => typeof item === 'string') : [],
     compatibleTools: Array.isArray(candidate.compatibleTools)
       ? candidate.compatibleTools.filter((item): item is string => typeof item === 'string')

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, LogIn, LogOut, Settings2, Shield, Wifi, WifiOff } from "lucide-react";
+import { Bell, ChevronDown, CircleUserRound, LogIn, LogOut, Settings2 } from "lucide-react";
 import { useP1Workspace } from "../state/useP1Workspace.ts";
 import { type TopLevelSection, useDesktopUIState } from "../state/useDesktopUIState.ts";
-import { roleLabel } from "./desktopShared.tsx";
+import { localize, roleLabel } from "./desktopShared.tsx";
+import { iconToneForLabel } from "./iconTone.ts";
 import { NotificationPopover } from "./NotificationPopover.tsx";
-import { CommunitySection, HomeSection, LocalSection, ManageSection, SkillDetailStage } from "./desktopSections.tsx";
+import { CommunitySection, HomeSection, LocalSection, ManageSection } from "./desktopSections.tsx";
 import { DesktopOverlays, FlashToast } from "./desktopOverlays.tsx";
 
 const sectionLabels: Record<TopLevelSection, string> = {
@@ -62,6 +63,17 @@ function TopbarNotifications({ ui }: { ui: ReturnType<typeof useDesktopUIState> 
 function AvatarMenu({ workspace, ui }: { workspace: ReturnType<typeof useP1Workspace>; ui: ReturnType<typeof useDesktopUIState> }) {
   const [open, setOpen] = useState(false);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const roleText =
+    workspace.loggedIn && workspace.bootstrap.connection.status !== "connected"
+      ? localize(ui.language, "离线待验权", "Offline Pending Verification")
+      : roleLabel(workspace.currentUser, ui.language);
+  const connectionTone = workspace.loggedIn && workspace.bootstrap.connection.status === "connected" ? "connected" : "offline";
+  const connectionLabel =
+    workspace.loggedIn && workspace.bootstrap.connection.status === "connected"
+      ? localize(ui.language, "已连接", "Connected")
+      : workspace.loggedIn
+        ? localize(ui.language, "离线", "Offline")
+        : localize(ui.language, "本地", "Local");
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
@@ -88,39 +100,73 @@ function AvatarMenu({ workspace, ui }: { workspace: ReturnType<typeof useP1Works
 
   return (
     <div className="topbar-popover-shell" ref={shellRef}>
-      <button className={open ? "avatar-button active" : "avatar-button"} type="button" onClick={() => setOpen((current) => !current)}>
-        <span className="avatar-dot">{workspace.currentUser.displayName.slice(0, 2).toUpperCase()}</span>
+      <button
+        className={open ? "avatar-button active" : "avatar-button"}
+        type="button"
+        data-testid={!workspace.loggedIn ? "open-login" : undefined}
+        onClick={() => {
+          if (!workspace.loggedIn) {
+            workspace.setLoginModalOpen(true);
+            return;
+          }
+          setOpen((current) => !current);
+        }}
+      >
+        <span className={`avatar-dot icon-tone-${iconToneForLabel(workspace.currentUser.username)}`}>
+          {workspace.currentUser.username.slice(0, 2).toUpperCase()}
+        </span>
         <span className="avatar-copy">
-          <strong>{workspace.currentUser.displayName}</strong>
-          <small>{roleLabel(workspace.currentUser, ui.language)}</small>
+          <strong>{workspace.currentUser.username}</strong>
+          <small className="avatar-subline">
+            <span className={`avatar-status-dot ${connectionTone}`} />
+            {roleText}
+          </small>
         </span>
         <ChevronDown size={14} />
       </button>
       {open ? (
-        <div className="avatar-menu">
-          <button className="menu-row" type="button" onClick={() => { setOpen(false); ui.openConnectionStatus(); }}>
-            {workspace.loggedIn && workspace.bootstrap.connection.status === "connected" ? <Wifi size={15} /> : <WifiOff size={15} />}
-            <span>{workspace.loggedIn ? "连接状态" : "本地模式"}</span>
+        <div className="avatar-menu" aria-label="账号菜单">
+          <div className="avatar-menu-profile">
+            <span className={`avatar-dot icon-tone-${iconToneForLabel(workspace.currentUser.username)}`}>
+              {workspace.currentUser.username.slice(0, 2).toUpperCase()}
+            </span>
+            <span className="avatar-menu-copy">
+              <strong>{workspace.currentUser.username}</strong>
+              <small>{roleText}</small>
+              <small>{workspace.currentUser.departmentName}</small>
+            </span>
+            <em className={`avatar-menu-status ${connectionTone}`}>{connectionLabel}</em>
+          </div>
+          <div className="avatar-menu-separator" />
+          <button className="menu-row account-menu-row" type="button" onClick={() => { setOpen(false); ui.openConnectionStatus(); }}>
+            <span className="menu-row-icon"><CircleUserRound size={15} /></span>
+            <span className="menu-row-copy">
+              <strong>我的信息</strong>
+              <small>身份、部门与服务状态</small>
+            </span>
           </button>
-          <button className="menu-row" type="button" onClick={() => { setOpen(false); ui.openSettingsModal(); }}>
-            <Settings2 size={15} />
-            <span>设置</span>
+          <button className="menu-row account-menu-row" type="button" onClick={() => { setOpen(false); ui.openSettingsModal(); }}>
+            <span className="menu-row-icon"><Settings2 size={15} /></span>
+            <span className="menu-row-copy">
+              <strong>设置</strong>
+              <small>偏好、凭据与本地环境</small>
+            </span>
           </button>
-          {workspace.isAdminConnected ? (
-            <button className="menu-row" type="button" onClick={() => { setOpen(false); ui.openManagePane("reviews"); }}>
-              <Shield size={15} />
-              <span>进入管理</span>
-            </button>
-          ) : null}
           {workspace.loggedIn ? (
-            <button className="menu-row" type="button" onClick={() => { setOpen(false); void workspace.logout(); }}>
-              <LogOut size={15} />
-              <span>退出登录</span>
+            <button className="menu-row account-menu-row" type="button" onClick={() => { setOpen(false); void workspace.logout(); }}>
+              <span className="menu-row-icon"><LogOut size={15} /></span>
+              <span className="menu-row-copy">
+                <strong>退出登录</strong>
+                <small>保留本地已安装数据</small>
+              </span>
             </button>
           ) : (
-            <button className="menu-row" type="button" onClick={() => { setOpen(false); workspace.setLoginModalOpen(true); }}>
-              <LogIn size={15} />
-              <span>登录</span>
+            <button className="menu-row account-menu-row" type="button" onClick={() => { setOpen(false); workspace.setLoginModalOpen(true); }}>
+              <span className="menu-row-icon"><LogIn size={15} /></span>
+              <span className="menu-row-copy">
+                <strong>登录</strong>
+                <small>同步企业服务能力</small>
+              </span>
             </button>
           )}
         </div>
@@ -137,7 +183,7 @@ export function DesktopApp() {
     <div className="desktop-shell">
       <header className="desktop-topbar">
         <div className="brand-lockup">
-          <button className="brand-badge" type="button" onClick={ui.goHome} aria-label="回到主页">
+          <button className="brand-badge icon-tone-pine" type="button" onClick={ui.goHome} aria-label="回到主页">
             A
           </button>
           <div className="brand-copy">
@@ -150,6 +196,7 @@ export function DesktopApp() {
           {ui.navigationSections.map((section) => (
             <button
               key={section}
+              data-testid={section === "community" ? "nav-market" : section === "local" ? "nav-my_installed" : section === "manage" ? "nav-review" : undefined}
               className={ui.activeSection === section ? "segment-button active" : "segment-button"}
               type="button"
               onClick={() => ui.navigateSection(section)}
@@ -166,16 +213,10 @@ export function DesktopApp() {
       </header>
 
       <main className="desktop-stage">
-        {ui.skillDetail ? (
-          <SkillDetailStage workspace={workspace} ui={ui} detail={ui.skillDetail} />
-        ) : (
-          <>
-            {ui.activeSection === "home" ? <HomeSection workspace={workspace} ui={ui} /> : null}
-            {ui.activeSection === "community" ? <CommunitySection workspace={workspace} ui={ui} /> : null}
-            {ui.activeSection === "local" ? <LocalSection workspace={workspace} ui={ui} /> : null}
-            {ui.activeSection === "manage" ? <ManageSection workspace={workspace} ui={ui} /> : null}
-          </>
-        )}
+        {ui.activeSection === "home" ? <HomeSection workspace={workspace} ui={ui} /> : null}
+        {ui.activeSection === "community" ? <CommunitySection workspace={workspace} ui={ui} /> : null}
+        {ui.activeSection === "local" ? <LocalSection workspace={workspace} ui={ui} /> : null}
+        {ui.activeSection === "manage" ? <ManageSection workspace={workspace} ui={ui} /> : null}
       </main>
 
       <DesktopOverlays workspace={workspace} ui={ui} />

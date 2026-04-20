@@ -22,6 +22,7 @@ export interface ApiLoginResponse {
 }
 
 export interface ApiBootstrapResponse extends Omit<BootstrapContext, "counts"> {
+  user: BootstrapContext["user"] & { displayName?: string; userID?: string };
   counts: Omit<BootstrapContext["counts"], "enabledCount"> & { enabledCount?: number };
 }
 
@@ -64,8 +65,18 @@ export function normalizeNotification(notification: ApiNotification): LocalNotif
 }
 
 export function normalizeBootstrap(response: ApiBootstrapResponse): BootstrapContext {
+  const username = response.user.username?.trim() || response.user.displayName?.trim() || "本地模式";
   return {
     ...response,
+    user: {
+      username,
+      phoneNumber: response.user.phoneNumber?.trim() ?? "",
+      role: response.user.role,
+      adminLevel: response.user.adminLevel,
+      departmentID: response.user.departmentID,
+      departmentName: response.user.departmentName,
+      locale: response.user.locale
+    },
     counts: {
       installedCount: response.counts.installedCount,
       enabledCount: response.counts.enabledCount ?? 0,
@@ -81,7 +92,7 @@ export function normalizeSkill(skill: ApiSkill): SkillSummary {
     localVersion: skill.localVersion ?? null,
     publishedAt: skill.publishedAt ?? skill.currentVersionUpdatedAt,
     tags: skill.tags ?? [],
-    category: skill.category ?? "uncategorized",
+    category: skill.category ?? "其他",
     riskLevel: skill.riskLevel ?? "unknown",
     starred: skill.starred ?? false,
     isScopeRestricted: skill.isScopeRestricted ?? skill.cannotInstallReason === "scope_restricted",
@@ -107,6 +118,7 @@ export function buildSkillListQuery(filters: MarketFilters, now = new Date()): U
   if (filters.compatibleTool !== "all") params.set("compatibleTool", filters.compatibleTool);
   if (filters.accessScope !== "include_public") params.set("accessScope", filters.accessScope);
   if (filters.category !== "all") params.set("category", filters.category);
+  if (filters.tags.length > 0) params.set("tags", filters.tags.join(","));
   if (filters.riskLevel !== "all") params.set("riskLevel", filters.riskLevel);
   const publishedSince = sinceISOString(filters.publishedWithin, now);
   if (publishedSince) params.set("publishedSince", publishedSince);

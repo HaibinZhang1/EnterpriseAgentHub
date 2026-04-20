@@ -9,7 +9,6 @@ import {
   PublisherSubmissionDetailDto,
   ReviewDetailDto,
   ReviewItemDto,
-  UserSummary,
 } from '../common/p1-contracts';
 import { logInfo } from '../common/structured-log';
 import { PublishingPrecheckService } from './publishing-precheck.service';
@@ -65,12 +64,12 @@ export class PublishingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async submitSubmission(
-    user: UserSummary,
+    userID: string,
     body: Record<string, string | undefined>,
     files: UploadedSubmissionFile[],
   ): Promise<PublisherSubmissionDetailDto> {
     const startedAt = Date.now();
-    const { actorUserID, reviewID } = await this.submissionService.createSubmission(user, body, files);
+    const { actorUserID, reviewID } = await this.submissionService.createSubmission(userID, body, files);
     await this.enqueueSystemPrecheck(reviewID);
     logInfo({
       event: 'publishing.submission.created',

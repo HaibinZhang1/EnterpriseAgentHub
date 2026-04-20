@@ -5,7 +5,7 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 require("ts-node/register/transpile-only");
 
-const { ForbiddenException } = require("@nestjs/common");
+const { BadRequestException, ForbiddenException } = require("@nestjs/common");
 const { PublishingSubmissionService } = require("../src/publishing/publishing-submission.service.ts");
 const { PublishingReviewService } = require("../src/publishing/publishing-review.service.ts");
 const {
@@ -13,6 +13,7 @@ const {
   isPermissionExpansion,
   parseSimpleFrontmatter
 } = require("../src/publishing/publishing.utils.ts");
+const { parseSubmissionInput } = require("../src/publishing/publishing-submission-input.ts");
 
 function createServices({
   database = {
@@ -162,6 +163,112 @@ body`);
       nextSelectedDepartmentIDs: []
     }),
     true
+  );
+});
+
+test("parseSubmissionInput accepts only fixed Chinese taxonomy values", () => {
+  const input = parseSubmissionInput({
+    submissionType: "publish",
+    skillID: "prompt-guardrails",
+    displayName: "提示词护栏模板",
+    description: "发布前检查提示词结构。",
+    version: "1.0.0",
+    visibilityLevel: "detail_visible",
+    scopeType: "current_department",
+    changelog: "首次发布",
+    category: "开发",
+    tags: JSON.stringify(["提示", "规范", "提示"]),
+    compatibleTools: JSON.stringify(["codex"]),
+    compatibleSystems: JSON.stringify(["windows"]),
+  });
+
+  assert.equal(input.category, "开发");
+  assert.deepEqual(input.tags, ["提示", "规范"]);
+});
+
+test("parseSubmissionInput rejects free-form or empty tags for publish submissions", () => {
+  assert.throws(
+    () => parseSubmissionInput({
+      submissionType: "publish",
+      skillID: "prompt-guardrails",
+      displayName: "提示词护栏模板",
+      description: "发布前检查提示词结构。",
+      version: "1.0.0",
+      visibilityLevel: "detail_visible",
+      scopeType: "current_department",
+      changelog: "首次发布",
+      category: "engineering",
+      tags: "prompt,governance",
+    }),
+    BadRequestException,
+  );
+});
+
+test("parseSubmissionInput rejects invalid skill slugs and semver", () => {
+  const base = {
+    submissionType: "publish",
+    skillID: "prompt-guardrails",
+    displayName: "提示词护栏模板",
+    description: "发布前检查提示词结构。",
+    version: "1.0.0",
+    visibilityLevel: "detail_visible",
+    scopeType: "current_department",
+    changelog: "首次发布",
+    category: "开发",
+    tags: JSON.stringify(["提示"])
+  };
+
+  assert.throws(() => parseSubmissionInput({ ...base, skillID: "Prompt Guardrails" }), BadRequestException);
+  assert.throws(() => parseSubmissionInput({ ...base, version: "1.0" }), BadRequestException);
+});
+
+test("PublishingSubmissionService rejects first publish when slug already exists", async () => {
+  const { submissionService } = createServices({
+    publishingRepository: {
+      async loadActor() {
+        return {
+          userID: "u_author",
+          displayName: "作者",
+          departmentID: "dept_frontend",
+          departmentName: "前端组"
+        };
+      },
+      async loadSkillByID() {
+        return {
+          id: "skill-row-1",
+          skill_id: "prompt-guardrails",
+          author_id: "u_author",
+          status: "published",
+          version: "1.0.0"
+        };
+      }
+    },
+    packageStorage: {
+      async stageSubmissionPackage() {
+        throw new Error("duplicate publish should not stage files");
+      }
+    }
+  });
+
+  await assert.rejects(
+    () =>
+      submissionService.createSubmission(
+        "u_author",
+        {
+          submissionType: "publish",
+          skillID: "prompt-guardrails",
+          displayName: "提示词护栏模板",
+          description: "发布前检查提示词结构。",
+          version: "1.0.0",
+          visibilityLevel: "detail_visible",
+          scopeType: "current_department",
+          changelog: "首次发布",
+          category: "开发",
+          tags: JSON.stringify(["提示"])
+        },
+        [{ originalname: "prompt-guardrails/SKILL.md", buffer: Buffer.from("# Skill") }]
+      ),
+    BadRequestException
   );
 });
 
@@ -321,4 +428,54 @@ test("PublishingReviewService passPrecheck moves review into pending_review when
   assert.equal(actorUserID, "u_reviewer");
   assert.match(updates[0].text, /UPDATE review_items/);
   assert.equal(history[0].action, "pass_precheck");
+});
+
+test("PublishingReviewService blocks passPrecheck when mandatory package checks failed", async () => {
+  const service = createReviewService({
+    publishingRepository: {
+      async loadActor() {
+        return { userID: "u_reviewer", role: "admin", adminLevel: 2 };
+      },
+      async loadReview() {
+        return {
+          review_id: "rv_blocked",
+          workflow_state: "manual_precheck",
+          submitter_id: "u_author",
+          submitter_role: "normal_user",
+          submitter_admin_level: null,
+          lock_owner_id: "u_reviewer",
+          lock_expires_at: new Date(Date.now() + 60_000),
+          precheck_results: [
+            {
+              id: "skill-md",
+              label: "存在 SKILL.md",
+              status: "warn",
+              message: "缺少 SKILL.md，需人工复核。",
+            },
+          ],
+        };
+      },
+      async insertHistory() {
+        throw new Error("blocked precheck should not write history");
+      },
+    },
+    reviewerRouting: {
+      assertClaimedReview() {},
+      async canActorReview() {
+        return true;
+      },
+      async shouldAutoApprove() {
+        return false;
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => service.passPrecheck("u_reviewer", "rv_blocked", "仍然通过"),
+    (error) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.equal(error.message, "validation_failed");
+      return true;
+    },
+  );
 });
