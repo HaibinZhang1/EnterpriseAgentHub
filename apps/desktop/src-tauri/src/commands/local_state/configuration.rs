@@ -315,12 +315,6 @@ pub(super) fn refresh_builtin_tool_configs(conn: &Connection) -> Result<(), Stri
         };
         let resolved_skills_path = manual_skills_path
             .clone()
-            .or_else(|| {
-                current_detection
-                    .detected_path
-                    .as_ref()
-                    .map(|path| path.to_string_lossy().to_string())
-            })
             .or_else(|| default_tool_skills_path(&adapter))
             .unwrap_or_default();
         conn.execute(

@@ -1,9 +1,7 @@
 const API_BASE_STORAGE_KEY = "enterprise-agent-hub:p1-api-base";
 const TOKEN_STORAGE_KEY = "enterprise-agent-hub:p1-token";
-const LOCAL_DEV_API_BASE = "http://127.0.0.1:3001";
 const DEFAULT_API_BASE =
-  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_DESKTOP_API_BASE_URL ??
-  (((import.meta as { env?: Record<string, string | boolean | undefined> }).env?.DEV ? LOCAL_DEV_API_BASE : "http://127.0.0.1:3000") as string);
+  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_DESKTOP_API_BASE_URL ?? "";
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 
 export class P1ApiError extends Error {
@@ -29,7 +27,8 @@ export function normalizeBaseURL(value: string): string {
 }
 
 export function getAPIBase(): string {
-  return normalizeBaseURL(window.localStorage.getItem(API_BASE_STORAGE_KEY) ?? DEFAULT_API_BASE);
+  const storedValue = window.localStorage.getItem(API_BASE_STORAGE_KEY) ?? DEFAULT_API_BASE;
+  return storedValue.trim() ? normalizeBaseURL(storedValue) : "";
 }
 
 export function setAPIBase(value: string): void {
@@ -37,7 +36,7 @@ export function setAPIBase(value: string): void {
 }
 
 export function resolveAPIURL(value: string): string {
-  return new URL(value, `${getAPIBase()}/`).toString();
+  return new URL(value, `${requireAPIBase()}/`).toString();
 }
 
 export function getToken(): string | null {
@@ -77,7 +76,7 @@ export async function requestJSON<T>(path: string, init?: RequestInit & { timeou
   }
 
   try {
-    const response = await fetch(`${getAPIBase()}${path}`, {
+    const response = await fetch(`${requireAPIBase()}${path}`, {
       credentials: "include",
       ...requestInit,
       headers,
@@ -122,6 +121,19 @@ export async function requestJSON<T>(path: string, init?: RequestInit & { timeou
   } finally {
     window.clearTimeout(timeoutID);
   }
+}
+
+function requireAPIBase(): string {
+  const apiBase = getAPIBase();
+  if (!apiBase) {
+    throw new P1ApiError({
+      status: 0,
+      code: "server_unavailable",
+      message: "请先输入服务地址。",
+      retryable: false
+    });
+  }
+  return apiBase;
 }
 
 export function routePath(template: string, params: Record<string, string>): string {

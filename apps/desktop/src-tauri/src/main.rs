@@ -9,7 +9,31 @@ use enterprise_agent_hub_desktop::commands::project_directory::{
     pick_project_directory as pick_project_directory_command, ProjectDirectorySelectionPayload,
 };
 use serde_json::json;
-use tauri::{Manager, State};
+use tauri::{LogicalSize, Manager, Size, State};
+
+#[tauri::command]
+fn p1_window_minimize(window: tauri::Window) {
+    let _ = window.minimize();
+}
+
+#[tauri::command]
+fn p1_window_maximize(window: tauri::Window) {
+    if let Ok(true) = window.is_maximized() {
+        let _ = window.unmaximize();
+    } else {
+        let _ = window.maximize();
+    }
+}
+
+#[tauri::command]
+fn p1_window_close(window: tauri::Window) {
+    let _ = window.close();
+}
+
+#[tauri::command]
+fn p1_window_start_dragging(window: tauri::Window) {
+    let _ = window.start_dragging();
+}
 
 #[tauri::command]
 fn get_local_bootstrap(state: State<'_, P1LocalState>) -> Result<LocalBootstrapPayload, String> {
@@ -171,9 +195,16 @@ fn main() {
             let state = P1LocalState::initialize(app_data_dir)
                 .map_err(|message| std::io::Error::new(std::io::ErrorKind::Other, message))?;
             app.manage(state);
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_min_size(Some(Size::Logical(LogicalSize::new(1200.0, 780.0))))?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            p1_window_minimize,
+            p1_window_maximize,
+            p1_window_close,
+            p1_window_start_dragging,
             get_local_bootstrap,
             detect_tools,
             save_tool_config,

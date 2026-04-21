@@ -907,6 +907,65 @@ test("discovered local skills include unmanaged tool and project skills", () => 
   assert.equal(discovered.find((skill) => skill.skillID === "tool-helper")?.version, "1.0.0");
 });
 
+test("discovered local skills keep conflict and orphan entries that still expose skill metadata", () => {
+  const discovered = deriveDiscoveredLocalSkills({
+    installedSkills: [],
+    marketSkills: [],
+    scanTargets: [
+      {
+        id: "tool:codex",
+        targetType: "tool",
+        targetID: "codex",
+        targetName: "Codex",
+        targetPath: "C:\\Users\\demo\\.codex\\skills",
+        transformStrategy: "codex_skill",
+        scannedAt: "2026-04-19T00:00:00Z",
+        counts: { managed: 0, unmanaged: 0, conflict: 1, orphan: 1 },
+        findings: [
+          {
+            id: "tool:codex:conflicted-skill",
+            kind: "conflict",
+            skillID: "conflicted-skill",
+            targetType: "tool",
+            targetID: "codex",
+            targetName: "Codex",
+            targetPath: "C:\\Users\\demo\\.codex\\skills\\conflicted-skill",
+            relativePath: "conflicted-skill",
+            checksum: "sha256:conflict",
+            canImport: false,
+            importDisplayName: "Conflicted Skill",
+            importDescription: "Existing target content drifted from the managed copy.",
+            importVersion: "1.2.0",
+            message: "检测到冲突副本。"
+          },
+          {
+            id: "tool:codex:orphaned-skill",
+            kind: "orphan",
+            skillID: "orphaned-skill",
+            targetType: "tool",
+            targetID: "codex",
+            targetName: "Codex",
+            targetPath: "C:\\Users\\demo\\.codex\\skills\\orphaned-skill",
+            relativePath: "orphaned-skill",
+            checksum: "sha256:orphan",
+            canImport: false,
+            importDisplayName: "Orphaned Skill",
+            importDescription: "Managed marker exists but the enable record is missing.",
+            importVersion: "0.0.0-local",
+            message: "检测到孤儿副本。"
+          }
+        ],
+        lastError: null
+      }
+    ]
+  });
+
+  assert.deepEqual(discovered.map((skill) => skill.skillID), ["conflicted-skill", "orphaned-skill"]);
+  assert.equal(discovered.every((skill) => skill.canImport === false), true);
+  assert.equal(discovered.find((skill) => skill.skillID === "conflicted-skill")?.targets[0]?.findingKind, "conflict");
+  assert.equal(discovered.find((skill) => skill.skillID === "orphaned-skill")?.targets[0]?.findingKind, "orphan");
+});
+
 test("local skills can be filtered by tool and project targets", () => {
   const installedSkill: SkillSummary = {
     ...baseSkill,

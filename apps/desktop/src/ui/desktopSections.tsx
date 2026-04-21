@@ -526,6 +526,105 @@ function ToolBrandMark({ toolID, label, large = false }: { toolID: string; label
 }
 
 function HomeHero({ workspace, ui }: SectionProps) {
+  const starterPrompts = [
+    "梳理当前工作区可用的 Skills",
+    "根据需求文档生成发布前检查清单",
+    "检查本地技能目录是否存在异常"
+  ];
+  const connected = workspace.loggedIn && workspace.bootstrap.connection.status === "connected";
+  const accessLabel = connected ? "在线权限" : "完全访问权限";
+  const communitySkillCount = workspace.skills.filter((skill) => skill.localVersion === null).length;
+  const installedSkillCount = workspace.skills.filter((skill) => skill.localVersion !== null).length;
+  const discoveredSkillCount = workspace.discoveredLocalSkills.length;
+  const localStatusLabel = discoveredSkillCount > 0 ? `${discoveredSkillCount} 个待处理本地条目` : "本地目录暂无待处理项";
+  const communityStatusLabel = connected ? "社区数据已同步" : workspace.loggedIn ? "离线时使用缓存数据" : "游客模式使用缓存数据";
+  const publishTitle = connected ? "生成发布前检查" : workspace.loggedIn ? "恢复连接后发布团队技能" : "登录后发布团队技能";
+  const publishBody = connected
+    ? "先整理一份检查清单，再进入发布中心补充元数据和变更说明。"
+    : workspace.loggedIn
+      ? "当前处于离线状态，可先整理问题，恢复连接后再进入发布中心提交。"
+      : "登录企业服务后即可进入发布中心，上传 Skill 文件夹或 zip 包。";
+  const publishMetrics = connected
+    ? [`${workspace.projects.length} 个项目入口`, `${workspace.tools.length} 个工具落点`]
+    : workspace.loggedIn
+      ? ["离线时可先整理提交内容", "恢复连接后进入发布中心"]
+      : ["登录企业服务后可发布", "支持文件夹与 zip 包"];
+  const capabilityCards = [
+    {
+      key: "community",
+      icon: <Sparkles size={18} />,
+      title: "继续在社区探索",
+      body: "把当前提问带入 Skills 市场，继续筛选、对比和安装。",
+      metrics: [communityStatusLabel, `${communitySkillCount} 个可浏览 Skills`],
+      actions: (
+        <>
+          <button className="btn btn-primary" type="button" onClick={() => ui.openCommunityPane("skills")}>
+            打开社区
+          </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              workspace.setFilters((current) => ({ ...current, query: starterPrompts[0] }));
+              ui.openCommunityPane("skills");
+            }}
+          >
+            用此问题搜索
+          </button>
+        </>
+      )
+    },
+    {
+      key: "local",
+      icon: <PackageCheck size={18} />,
+      title: "检查本地启用状态",
+      body: "查看已纳管 Skills、本地发现结果，以及工具和项目的 Skills 落点。",
+      metrics: [`${installedSkillCount} 个已纳管 Skills`, localStatusLabel],
+      actions: (
+        <>
+          <button className="btn btn-primary" type="button" onClick={() => ui.openLocalPane("skills")}>
+            打开本地
+          </button>
+          <ScanLocalTargetsButton workspace={workspace} />
+        </>
+      )
+    },
+    {
+      key: "publish",
+      icon: <ClipboardCheck size={18} />,
+      title: publishTitle,
+      body: publishBody,
+      metrics: publishMetrics,
+      actions: connected ? (
+        <>
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => workspace.setFilters((current) => ({ ...current, query: starterPrompts[1] }))}
+          >
+            生成清单
+          </button>
+          <button className="btn" type="button" onClick={() => ui.openCommunityPane("publish")}>
+            进入发布中心
+          </button>
+        </>
+      ) : (
+        <>
+          <button className="btn btn-primary" type="button" onClick={() => workspace.requireAuth("publisher")}>
+            登录企业服务
+          </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => workspace.setFilters((current) => ({ ...current, query: starterPrompts[1] }))}
+          >
+            先整理问题
+          </button>
+        </>
+      )
+    }
+  ];
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     ui.openCommunityPane("skills");
@@ -535,34 +634,76 @@ function HomeHero({ workspace, ui }: SectionProps) {
     <section className="home-hero-shell">
       <section className="hero-surface hero-feature-home">
         <div className="hero-copy hero-copy-home">
-          <h1>Agent 探索</h1>
+          <div className="home-copy-block">
+            <span className="eyebrow home-eyebrow">Desktop AI Workspace</span>
+            <h1>Agent 探索</h1>
+            <p>从工作区、本地文件和已安装技能开始一次更聚焦的提问。</p>
+          </div>
           <form className="prompt-composer" onSubmit={submit}>
-            <textarea
-              name="query"
-              className="prompt-composer-input"
-              value={workspace.filters.query}
-              placeholder="向 Agent 提问，@ 添加文件，/ 输入命令，$ 使用技能"
-              onChange={(event) => workspace.setFilters((current) => ({ ...current, query: event.target.value }))}
-            />
-            <div className="prompt-composer-toolbar">
-              <div className="prompt-toolbar-left">
-                <button className="composer-icon-button" type="button" aria-label="添加">+</button>
-                <button className="composer-pill" type="button">
-                  {workspace.loggedIn && workspace.bootstrap.connection.status === "connected" ? "在线权限" : "完全访问权限"}
-                </button>
-              </div>
-              <div className="prompt-toolbar-right">
-                <button className="composer-text-button" type="button">GPT-5.4</button>
-                <button className="composer-text-button" type="button">超高</button>
-                <button className="composer-icon-button muted" type="button" aria-label="语音">◌</button>
-                <button className="composer-submit" type="submit" aria-label="发送">↑</button>
+            <div className="prompt-composer-shell">
+              <textarea
+                name="query"
+                className="prompt-composer-input"
+                value={workspace.filters.query}
+                placeholder="向 Agent 提问，@ 添加文件，/ 输入命令，$ 使用技能"
+                onChange={(event) => workspace.setFilters((current) => ({ ...current, query: event.target.value }))}
+              />
+              <div className="prompt-composer-toolbar">
+                <div className="prompt-toolbar-left">
+                  <button className="composer-icon-button" type="button" aria-label="添加">
+                    <Plus size={18} />
+                  </button>
+                  <button className="composer-pill" type="button">
+                    {accessLabel}
+                  </button>
+                </div>
+                <div className="prompt-toolbar-right">
+                  <button className="composer-text-button" type="button">GPT-5.4</button>
+                  <button className="composer-text-button" type="button">超高</button>
+                  <button className="composer-icon-button muted" type="button" aria-label="语音">◌</button>
+                  <button className="composer-submit" type="submit" aria-label="发送">↑</button>
+                </div>
               </div>
             </div>
           </form>
-          <div className="prompt-context-bar">
-            <span className="prompt-context-pill">EnterpriseAgentHub</span>
-            <span className="prompt-context-pill">{workspace.loggedIn ? "在线工作区" : "本地工作"}</span>
-            <span className="prompt-context-pill">{workspace.loggedIn ? roleLabel(workspace.currentUser, ui.language) : "guest"}</span>
+          <div className="home-starter-row">
+            <div className="home-starter-label">
+              <Sparkles size={14} />
+              <span>开始探索</span>
+            </div>
+            <div className="home-starter-actions">
+              {starterPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  className="home-starter-chip"
+                  type="button"
+                  onClick={() => workspace.setFilters((current) => ({ ...current, query: prompt }))}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="home-capability-grid">
+            {capabilityCards.map((card) => (
+              <section key={card.key} className="home-capability-card">
+                <div className="home-capability-head">
+                  <span className="home-capability-icon">{card.icon}</span>
+                  <div className="home-capability-copy">
+                    <strong>{card.title}</strong>
+                    <p>{card.body}</p>
+                  </div>
+                </div>
+                <div className="home-capability-metrics">
+                  {card.metrics.map((item) => (
+                    <span key={item} className="home-capability-metric">{item}</span>
+                  ))}
+                </div>
+                <div className="home-capability-actions">
+                  {card.actions}
+                </div>
+              </section>
+            ))}
           </div>
         </div>
       </section>

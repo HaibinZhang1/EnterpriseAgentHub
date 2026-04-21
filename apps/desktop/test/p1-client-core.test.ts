@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { P1ApiError, requestJSON } from "../src/services/p1Client/core.ts";
+import { getAPIBase, P1ApiError, requestJSON } from "../src/services/p1Client/core.ts";
 
 class MemoryStorage {
   #map = new Map<string, string>();
@@ -18,9 +18,11 @@ class MemoryStorage {
   }
 }
 
-function installWindow() {
+function installWindow(apiBase?: string) {
   const storage = new MemoryStorage();
-  storage.setItem("enterprise-agent-hub:p1-api-base", "http://127.0.0.1:3000");
+  if (apiBase !== undefined) {
+    storage.setItem("enterprise-agent-hub:p1-api-base", apiBase);
+  }
   const previousWindow = globalThis.window;
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -38,8 +40,37 @@ function installWindow() {
   };
 }
 
-test("requestJSON turns hung requests into a retryable timeout error", async () => {
+test("getAPIBase leaves the service URL empty when no address is configured", () => {
   const restoreWindow = installWindow();
+
+  try {
+    assert.equal(getAPIBase(), "");
+  } finally {
+    restoreWindow();
+  }
+});
+
+test("requestJSON uses the configured service URL without rewriting port", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL) => {
+    assert.equal(String(input), "http://127.0.0.1:3000/auth/login");
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  try {
+    await assert.doesNotReject(() => requestJSON("/auth/login", { method: "POST" }));
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("requestJSON turns hung requests into a retryable timeout error", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
   const previousFetch = globalThis.fetch;
   globalThis.fetch = ((_: string, init?: RequestInit) =>
     new Promise((_resolve, reject) => {
@@ -68,7 +99,7 @@ test("requestJSON turns hung requests into a retryable timeout error", async () 
 });
 
 test("requestJSON turns fetch failures into a retryable connectivity error", async () => {
-  const restoreWindow = installWindow();
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
   const previousFetch = globalThis.fetch;
   globalThis.fetch = (() => Promise.reject(new TypeError("fetch failed"))) as typeof fetch;
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, CircleUserRound, LogIn, LogOut, Settings2 } from "lucide-react";
+import { Bell, ChevronDown, CircleUserRound, LogIn, LogOut, Minus, Settings2, Square, X } from "lucide-react";
 import { useP1Workspace } from "../state/useP1Workspace.ts";
 import { type TopLevelSection, useDesktopUIState } from "../state/useDesktopUIState.ts";
 import { localize, roleLabel } from "./desktopShared.tsx";
@@ -7,6 +7,7 @@ import { iconToneForLabel } from "./iconTone.ts";
 import { NotificationPopover } from "./NotificationPopover.tsx";
 import { CommunitySection, HomeSection, LocalSection, ManageSection } from "./desktopSections.tsx";
 import { DesktopOverlays, FlashToast } from "./desktopOverlays.tsx";
+import { getInvoke } from "../services/tauriBridge/runtime.ts";
 
 const sectionLabels: Record<TopLevelSection, string> = {
   home: "主页",
@@ -175,13 +176,59 @@ function AvatarMenu({ workspace, ui }: { workspace: ReturnType<typeof useP1Works
   );
 }
 
+function WindowControls() {
+  const minimize = () => {
+    const invoke = getInvoke();
+    if (invoke) void invoke("p1_window_minimize");
+  };
+  const maximize = () => {
+    const invoke = getInvoke();
+    if (invoke) void invoke("p1_window_maximize");
+  };
+  const close = () => {
+    const invoke = getInvoke();
+    if (invoke) void invoke("p1_window_close");
+  };
+
+  return (
+    <div className="window-controls">
+      <button className="window-control-button" type="button" onClick={minimize} aria-label="最小化">
+        <Minus size={14} />
+      </button>
+      <button className="window-control-button" type="button" onClick={maximize} aria-label="最大化">
+        <Square size={12} />
+      </button>
+      <button className="window-control-button close-button" type="button" onClick={close} aria-label="关闭">
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
+function startWindowDragging() {
+  const invoke = getInvoke();
+  if (invoke) void invoke("p1_window_start_dragging");
+}
+
 export function DesktopApp() {
   const workspace = useP1Workspace();
   const ui = useDesktopUIState(workspace);
 
   return (
     <div className="desktop-shell">
-      <header className="desktop-topbar">
+      <header
+        className="desktop-topbar"
+        onPointerDown={(e) => {
+          if (e.button !== 0) {
+            return;
+          }
+          const target = e.target instanceof Element ? e.target : null;
+          if (target?.closest("button, input, textarea, select, a, [role='button']")) {
+            return;
+          }
+          startWindowDragging();
+        }}
+      >
         <div className="brand-lockup">
           <button className="brand-badge icon-tone-pine" type="button" onClick={ui.goHome} aria-label="回到主页">
             A
@@ -209,6 +256,8 @@ export function DesktopApp() {
         <div className="topbar-actions">
           <TopbarNotifications ui={ui} />
           <AvatarMenu workspace={workspace} ui={ui} />
+          <div className="topbar-divider" />
+          <WindowControls />
         </div>
       </header>
 

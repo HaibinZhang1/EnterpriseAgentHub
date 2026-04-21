@@ -340,8 +340,14 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   }, [presentBlockingModal]);
 
   const openSettingsModal = useCallback(() => {
+    if (!workspace.loggedIn) {
+      workspace.requireAuth(workspace.activePage, () => {
+        presentBlockingModal({ type: "settings" });
+      });
+      return;
+    }
     presentBlockingModal({ type: "settings" });
-  }, [presentBlockingModal]);
+  }, [presentBlockingModal, workspace.activePage, workspace.loggedIn, workspace.requireAuth]);
 
   const openConfirm = useCallback((input: Omit<NonNullable<ConfirmModalState>, "type">) => {
     presentBlockingConfirm({ type: "confirm", ...input });

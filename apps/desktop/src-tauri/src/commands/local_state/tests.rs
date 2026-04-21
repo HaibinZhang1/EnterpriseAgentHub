@@ -514,6 +514,60 @@ fn scans_local_targets_and_requires_explicit_overwrite() {
 }
 
 #[test]
+fn scans_root_and_nested_skill_directories_together() {
+    let _lock = ENV_LOCK.lock().expect("lock env");
+    let temp = TestTemp::new("local-state-scan-nested");
+    let state = P1LocalState::initialize(temp.path.join("app-data")).expect("init state");
+    let tool_root = temp.path.join("codex-skills");
+
+    state
+        .save_tool_config(ToolConfigInputPayload {
+            tool_id: "codex".to_string(),
+            name: None,
+            config_path: "".to_string(),
+            skills_path: tool_root.to_string_lossy().to_string(),
+            enabled: Some(true),
+        })
+        .expect("save codex tool config");
+
+    write_skill_dir(
+        &tool_root.join("root-helper"),
+        "root-helper",
+        "Root Helper",
+        "1.0.0",
+    );
+    write_skill_dir(
+        &tool_root.join(".system").join("imagegen"),
+        "imagegen",
+        "System image generation skill",
+        "1.0.0",
+    );
+
+    let scan = state.scan_local_targets().expect("scan local targets");
+    let codex_scan = scan
+        .iter()
+        .find(|summary| summary.target_type == "tool" && summary.target_id == "codex")
+        .expect("codex scan");
+
+    assert_eq!(codex_scan.counts.unmanaged, 2);
+    let root_skill = codex_scan
+        .findings
+        .iter()
+        .find(|finding| finding.relative_path == "root-helper")
+        .expect("root skill finding");
+    let nested_skill = codex_scan
+        .findings
+        .iter()
+        .find(|finding| finding.relative_path == ".system/imagegen")
+        .expect("nested skill finding");
+
+    assert!(root_skill.can_import);
+    assert_eq!(root_skill.import_display_name.as_deref(), Some("root-helper"));
+    assert!(nested_skill.can_import);
+    assert_eq!(nested_skill.import_display_name.as_deref(), Some("imagegen"));
+}
+
+#[test]
 fn imports_unmanaged_skill_into_central_store_and_claims_matching_sources() {
     let _lock = ENV_LOCK.lock().expect("lock env");
     let temp = TestTemp::new("local-state-import");

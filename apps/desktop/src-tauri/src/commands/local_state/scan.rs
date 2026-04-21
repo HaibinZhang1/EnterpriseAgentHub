@@ -134,11 +134,8 @@ fn scan_target_root(
         return Ok(findings);
     }
 
-    let entries =
-        fs::read_dir(&root).map_err(|error| format!("scan {}: {error}", root.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("scan {}: {error}", root.display()))?;
-        let entry_path = entry.path();
+    let entry_paths = collect_scan_entry_paths(&root)?;
+    for entry_path in entry_paths {
         let normalized_entry_path = normalize_path_text(entry_path.to_string_lossy().as_ref());
         let checksum = hash_path(&entry_path).ok();
         let relative_path = relative_entry_name(&entry_path, &root);
@@ -211,6 +208,39 @@ fn scan_target_root(
 
     findings.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(findings)
+}
+
+fn collect_scan_entry_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut entry_paths = Vec::new();
+    let entries = fs::read_dir(root).map_err(|error| format!("scan {}: {error}", root.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("scan {}: {error}", root.display()))?;
+        let entry_path = entry.path();
+        let nested_skill_dirs = nested_skill_dirs(&entry_path)?;
+        if nested_skill_dirs.is_empty() {
+            entry_paths.push(entry_path);
+        } else {
+            entry_paths.extend(nested_skill_dirs);
+        }
+    }
+    Ok(entry_paths)
+}
+
+fn nested_skill_dirs(entry_path: &Path) -> Result<Vec<PathBuf>, String> {
+    if !entry_path.is_dir() || entry_path.join("SKILL.md").is_file() {
+        return Ok(Vec::new());
+    }
+    let mut nested = Vec::new();
+    let entries =
+        fs::read_dir(entry_path).map_err(|error| format!("scan {}: {error}", entry_path.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("scan {}: {error}", entry_path.display()))?;
+        let child_path = entry.path();
+        if child_path.is_dir() && child_path.join("SKILL.md").is_file() {
+            nested.push(child_path);
+        }
+    }
+    Ok(nested)
 }
 
 fn list_enabled_project_scan_targets(
@@ -407,5 +437,5 @@ fn relative_entry_name(entry_path: &Path, target_root: &Path) -> String {
                 .and_then(|value| value.to_str())
                 .unwrap_or("")
         })
-        .to_string()
+        .replace('\\', "/")
 }

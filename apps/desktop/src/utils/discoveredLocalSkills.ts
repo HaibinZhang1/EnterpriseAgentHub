@@ -10,8 +10,12 @@ function humanizeSkillID(skillID: string): string {
     .join(" ");
 }
 
+function hasImportMetadata(finding: ScanTargetSummary["findings"][number]): boolean {
+  return Boolean(finding.importDisplayName || finding.importDescription || finding.importVersion);
+}
+
 function inferSkillID(summary: ScanTargetSummary, finding: ScanTargetSummary["findings"][number]): string | null {
-  if (!finding.canImport) return null;
+  if (!finding.canImport && !hasImportMetadata(finding)) return null;
   const raw = (finding.skillID ?? finding.relativePath.split(/[\\/]/).pop() ?? "").trim();
   if (!raw || raw.startsWith(".")) return null;
 
@@ -71,7 +75,7 @@ export function deriveDiscoveredLocalSkills(input: {
 
   for (const summary of input.scanTargets) {
     for (const finding of summary.findings) {
-      if (finding.kind === "managed" || !finding.canImport) continue;
+      if (finding.kind === "managed" || (!finding.canImport && !hasImportMetadata(finding))) continue;
       const skillID = inferSkillID(summary, finding);
       if (!skillID) continue;
 
@@ -85,7 +89,7 @@ export function deriveDiscoveredLocalSkills(input: {
         version: finding.importVersion ?? "0.0.0-local",
         sourceLabel: "",
         matchedMarketSkill: Boolean(marketSkill),
-        canImport: true,
+        canImport: finding.canImport,
         hasCentralStoreConflict,
         hasScanConflict: false,
         suggestedSkillID: suggestLocalSkillID(skillID, installedSkillIDs),
@@ -102,6 +106,7 @@ export function deriveDiscoveredLocalSkills(input: {
         findingKind: finding.kind as DiscoveredLocalSkill["targets"][number]["findingKind"],
         message: finding.message
       });
+      current.canImport = current.canImport || finding.canImport;
       current.hasCentralStoreConflict = current.hasCentralStoreConflict || hasCentralStoreConflict;
       current.hasScanConflict = new Set(current.targets.map((target) => target.checksum).filter(Boolean)).size > 1;
       current.sourceLabel = sourceLabel(current.targets);
