@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use enterprise_agent_hub_desktop::commands::local_state::{
     DisableSkillPayload, DownloadTicketPayload, EnabledTargetPayload, ImportLocalSkillPayload,
     LocalBootstrapPayload, LocalNotificationPayload, LocalSkillInstallPayload,
