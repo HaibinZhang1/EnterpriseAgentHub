@@ -1,9 +1,9 @@
 use std::path::PathBuf;
-#[cfg(windows)]
-use std::process::Command;
 
 use super::config::{AdapterConfig, DetectionMethod, Platform, ResolvedAdapterConfig};
 use super::path_validation::validate_target_path;
+#[cfg(windows)]
+use crate::process::background_command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdapterStatus {
@@ -246,7 +246,7 @@ fn registry_search_terms(adapter: &AdapterConfig) -> Vec<String> {
 
 #[cfg(windows)]
 fn query_registry_root_for_tool(root: &str, search_terms: &[String]) -> Option<PathBuf> {
-    let output = Command::new("reg")
+    let output = background_command("reg")
         .args(["query", root, "/s", "/v", "DisplayName"])
         .output()
         .ok()?;
@@ -282,7 +282,7 @@ fn query_registry_root_for_tool(root: &str, search_terms: &[String]) -> Option<P
 
 #[cfg(windows)]
 fn query_registry_value_path(key: &str, value_name: &str) -> Option<PathBuf> {
-    let output = Command::new("reg")
+    let output = background_command("reg")
         .args(["query", key, "/v", value_name])
         .output()
         .ok()?;

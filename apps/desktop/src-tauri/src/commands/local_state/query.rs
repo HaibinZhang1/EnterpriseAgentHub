@@ -1,6 +1,4 @@
-use super::configuration::{
-    detect_tools_from_conn, list_project_configs_from_conn, refresh_builtin_tool_configs,
-};
+use super::configuration::{detect_tools_from_conn, list_project_configs_from_conn};
 use super::persistence::{
     count_pending_offline_events, count_unread_local_notifications, list_local_installs_from_conn,
     load_local_notifications, load_pending_offline_events,
@@ -9,7 +7,6 @@ use super::{LocalBootstrapPayload, LocalSkillInstallPayload, P1LocalState, ToolC
 
 pub(super) fn get_local_bootstrap(state: &P1LocalState) -> Result<LocalBootstrapPayload, String> {
     let conn = state.open_connection().map_err(|error| error.to_string())?;
-    refresh_builtin_tool_configs(&conn)?;
     Ok(LocalBootstrapPayload {
         installs: list_local_installs_from_conn(&conn).map_err(|error| error.to_string())?,
         tools: detect_tools_from_conn(&conn).map_err(|error| error.to_string())?,
@@ -26,7 +23,7 @@ pub(super) fn get_local_bootstrap(state: &P1LocalState) -> Result<LocalBootstrap
 
 pub(super) fn detect_tools(state: &P1LocalState) -> Result<Vec<ToolConfigPayload>, String> {
     let conn = state.open_connection().map_err(|error| error.to_string())?;
-    refresh_builtin_tool_configs(&conn)?;
+    super::configuration::refresh_builtin_tool_configs(&conn)?;
     detect_tools_from_conn(&conn).map_err(|error| error.to_string())
 }
 

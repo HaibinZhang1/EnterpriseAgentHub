@@ -52,6 +52,7 @@ impl P1LocalState {
         state
             .set_store_metadata(&conn)
             .map_err(|error| error.to_string())?;
+        configuration::refresh_builtin_tool_configs(&conn)?;
         Ok(state)
     }
 

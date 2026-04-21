@@ -5,9 +5,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use super::checksum::hash_path;
-use super::configuration::{
-    derive_project_path_status, load_tool_config_payload, refresh_builtin_tool_configs,
-};
+use super::configuration::{derive_project_path_status, load_tool_config_payload};
 use super::pathing::{int_to_bool, normalize_path_text, now_iso, resolve_project_adapter};
 use super::persistence::{count_enabled_targets_for_project, load_enabled_targets_for_target};
 use super::{
@@ -19,7 +17,6 @@ pub(super) fn scan_local_targets(
     state: &P1LocalState,
 ) -> Result<Vec<ScanTargetSummaryPayload>, String> {
     let conn = state.open_connection().map_err(|error| error.to_string())?;
-    refresh_builtin_tool_configs(&conn)?;
     scan_local_targets_from_conn(&conn)
 }
 

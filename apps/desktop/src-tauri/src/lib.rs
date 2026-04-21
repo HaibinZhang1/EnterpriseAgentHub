@@ -4,7 +4,7 @@
 //! functions later; keeping this crate dependency-light lets the Store/Adapter
 //! boundary compile and test independently in the current repository snapshot.
 
-use std::process::Command;
+use crate::process::background_command;
 
 #[tauri::command]
 fn p1_window_minimize(window: tauri::Window) {
@@ -38,21 +38,21 @@ fn p1_open_external_url(url: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut command = Command::new("cmd");
+        let mut command = background_command("cmd");
         command.args(["/C", "start", "", &url]);
         command
     };
 
     #[cfg(target_os = "macos")]
     let mut command = {
-        let mut command = Command::new("open");
+        let mut command = background_command("open");
         command.arg(&url);
         command
     };
 
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut command = {
-        let mut command = Command::new("xdg-open");
+        let mut command = background_command("xdg-open");
         command.arg(&url);
         command
     };
@@ -87,5 +87,7 @@ pub mod commands {
     pub mod project_directory;
     pub mod tool_detection;
 }
+
+mod process;
 
 pub mod store;

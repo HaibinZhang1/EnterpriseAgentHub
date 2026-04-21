@@ -29,7 +29,7 @@ import { iconToneForLabel, iconTones } from "../src/ui/iconTone.ts";
 import { themeLabel } from "../src/ui/themeLabels.ts";
 import { buildDisableSkillArgs, buildEnableSkillArgs, buildUninstallSkillArgs, normalizeUninstallSkillResult } from "../src/services/tauriBridge/localCommandArgs.ts";
 import { deriveDiscoveredLocalSkills } from "../src/utils/discoveredLocalSkills.ts";
-import { defaultProjectSkillsPath, defaultToolConfigPath } from "../src/utils/platformPaths.ts";
+import { defaultProjectSkillsPath, defaultToolConfigPath, defaultToolSkillsPath } from "../src/utils/platformPaths.ts";
 import { mergeLocalInstalls } from "../src/state/p1WorkspaceHelpers.ts";
 
 const baseDraft: PublishDraft = {
@@ -284,6 +284,17 @@ test("notification actions route old review and publisher events into the new IA
       publisherSubmissions: []
     }),
     { kind: "my_installed", installedFilter: "updates", skillID: "review-helper" }
+  );
+});
+
+test("opencode defaults point to the config directory on Windows", () => {
+  assert.equal(
+    defaultToolConfigPath("opencode", "windows"),
+    "%USERPROFILE%\\.config\\opencode\\opencode.json"
+  );
+  assert.equal(
+    defaultToolSkillsPath("opencode", "windows"),
+    "%USERPROFILE%\\.config\\opencode\\skills"
   );
 });
 

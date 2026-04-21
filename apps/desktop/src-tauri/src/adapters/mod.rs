@@ -74,6 +74,24 @@ mod tests {
     }
 
     #[test]
+    fn opencode_windows_defaults_use_config_directory() {
+        let opencode = builtin_adapters()
+            .into_iter()
+            .find(|adapter| adapter.tool_id == AdapterID::Opencode)
+            .expect("opencode adapter");
+        let resolved = opencode.resolve(Platform::Windows);
+
+        assert_eq!(
+            resolved.target.global_paths,
+            vec!["%USERPROFILE%\\.config\\opencode\\skills".to_string()]
+        );
+        assert_eq!(
+            resolved.target.config_path.as_deref(),
+            Some("%USERPROFILE%\\.config\\opencode\\opencode.json")
+        );
+    }
+
+    #[test]
     fn cursor_transform_writes_rule_without_touching_target_dir() {
         let temp = TestTemp::new("cursor-transform");
         let source = temp.path.join("store/example-skill/1.0.0");

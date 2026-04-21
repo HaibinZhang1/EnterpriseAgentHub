@@ -326,11 +326,11 @@ pub fn builtin_adapters() -> Vec<AdapterConfig> {
         adapter(
             AdapterID::Opencode,
             "opencode",
-            vec!["%USERPROFILE%\\.opencode\\skills"],
+            vec!["%USERPROFILE%\\.config\\opencode\\skills"],
             vec!["~/.config/opencode/skills"],
             vec![".opencode\\skills"],
             vec![".opencode/skills"],
-            Some("%USERPROFILE%\\.opencode\\config.json"),
+            Some("%USERPROFILE%\\.config\\opencode\\opencode.json"),
             Some("~/.config/opencode/opencode.json"),
             TransformStrategy::OpencodeSkill,
             vec![

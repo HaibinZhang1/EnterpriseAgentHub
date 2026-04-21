@@ -28,7 +28,6 @@ pub(super) fn save_tool_config(
     input: ToolConfigInputPayload,
 ) -> Result<ToolConfigPayload, String> {
     let conn = state.open_connection().map_err(|error| error.to_string())?;
-    refresh_builtin_tool_configs(&conn)?;
     let adapter = builtin_adapters()
         .into_iter()
         .find(|candidate| candidate.tool_id.as_str() == input.tool_id)
@@ -296,9 +295,19 @@ pub(super) fn refresh_builtin_tool_configs(conn: &Connection) -> Result<(), Stri
         let manual_skills_path = saved
             .and_then(|row| row.skills_path.clone())
             .filter(|_| saved.and_then(|row| row.detection_method.as_deref()) == Some("manual"));
-        let auto_detection = detect_adapter(&adapter, None);
         let current_detection =
-            detect_adapter(&adapter, manual_skills_path.as_ref().map(PathBuf::from));
+            detect_adapter(&adapter, manual_skills_path.as_deref().map(PathBuf::from));
+        let auto_detected_path = if manual_skills_path.is_some() {
+            detect_adapter(&adapter, None)
+                .detected_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string())
+        } else {
+            current_detection
+                .detected_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string())
+        };
         let enabled = saved.map(|row| row.enabled).unwrap_or(adapter.enabled);
         let adapter_status = if enabled {
             current_detection.status.as_str().to_string()
@@ -339,10 +348,7 @@ pub(super) fn refresh_builtin_tool_configs(conn: &Connection) -> Result<(), Stri
                 adapter.tool_id.as_str(),
                 &display_name,
                 adapter_status,
-                auto_detection
-                    .detected_path
-                    .as_ref()
-                    .map(|path| path.to_string_lossy().to_string()),
+                auto_detected_path,
                 saved.and_then(|row| row.configured_path.clone()),
                 resolved_skills_path,
                 bool_to_int(enabled),

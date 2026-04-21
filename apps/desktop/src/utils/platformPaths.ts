@@ -27,8 +27,8 @@ const TOOL_DEFAULTS: Record<DesktopPlatform, Record<string, ToolPathDefaults>> =
       skillsPaths: ["%USERPROFILE%\\.windsurf\\skills"]
     },
     opencode: {
-      configPath: "%USERPROFILE%\\.opencode\\config.json",
-      skillsPaths: ["%USERPROFILE%\\.opencode\\skills"]
+      configPath: "%USERPROFILE%\\.config\\opencode\\opencode.json",
+      skillsPaths: ["%USERPROFILE%\\.config\\opencode\\skills"]
     },
     custom_directory: {
       configPath: "手动维护",

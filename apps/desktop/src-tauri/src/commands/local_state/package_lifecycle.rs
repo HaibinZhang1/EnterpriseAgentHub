@@ -6,9 +6,7 @@ use reqwest::blocking::Client;
 use zip::ZipArchive;
 
 use super::checksum::hash_path;
-use super::configuration::{
-    load_project_config, load_tool_config_payload, refresh_builtin_tool_configs,
-};
+use super::configuration::{load_project_config, load_tool_config_payload};
 use super::pathing::{
     build_local_event_payload, enabled_target_model, now_iso, now_millis, sanitize_segment,
 };
@@ -85,7 +83,6 @@ pub(super) fn import_local_skill(
     input: ImportLocalSkillPayload,
 ) -> Result<LocalSkillInstallPayload, String> {
     let conn = state.open_connection().map_err(|error| error.to_string())?;
-    refresh_builtin_tool_configs(&conn)?;
     let final_skill_id = validate_import_skill_id(&input.skill_id)?;
     let relative_path = safe_relative_path(&input.relative_path)?;
     let (target_name, target_root) =

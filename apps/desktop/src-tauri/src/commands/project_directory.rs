@@ -1,5 +1,6 @@
 use serde::Serialize;
-use std::process::Command;
+
+use crate::process::background_command;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,7 +15,7 @@ pub fn pick_project_directory() -> Result<Option<ProjectDirectorySelectionPayloa
 
 #[cfg(target_os = "macos")]
 fn platform_pick_project_directory() -> Result<Option<String>, String> {
-    let output = Command::new("osascript")
+    let output = background_command("osascript")
         .args([
             "-e",
             "set selectedFolder to POSIX path of (choose folder with prompt \"选择项目目录\")",
@@ -50,7 +51,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 }
 "#;
 
-    let output = Command::new("powershell")
+    let output = background_command("powershell")
         .args(["-NoProfile", "-STA", "-Command", SCRIPT])
         .output()
         .map_err(|error| format!("launch powershell: {error}"))?;

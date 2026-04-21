@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use rusqlite::params;
 
 use super::checksum::hash_path;
-use super::configuration::refresh_builtin_tool_configs;
 use super::pathing::{
     build_local_event_payload, now_iso, parse_adapter_mode, resolve_enable_target,
 };
@@ -26,7 +25,6 @@ pub(super) fn enable_skill(
     allow_overwrite: Option<bool>,
 ) -> Result<EnabledTargetPayload, String> {
     let conn = state.open_connection().map_err(|error| error.to_string())?;
-    refresh_builtin_tool_configs(&conn)?;
     let install = load_install_row(&conn, &skill_id).map_err(|error| error.to_string())?;
     let installed_version = if version.trim().is_empty() {
         install.local_version.clone()

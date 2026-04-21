@@ -212,7 +212,7 @@ tools:
     enabled: true
     mode: copy
     global_paths:
-      - ~/.opencode/skills
+      - ~/.config/opencode/skills
     project_paths:
       - .opencode/skills
     format: opencode-skill

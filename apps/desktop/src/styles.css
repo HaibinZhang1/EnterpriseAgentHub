@@ -81,11 +81,12 @@
   --radius-md: 12px;
   --radius-lg: 20px;
   --radius-xl: 28px;
-  --layout-gap: 16px;
-  --layout-rail-width: 220px;
-  --layout-inspector-width: 340px;
-  --layout-topbar-min-height: 48px;
-  --layout-panel-padding: 18px;
+  --layout-gap: 14px;
+  --layout-rail-width: clamp(196px, 13vw, 216px);
+  --layout-inspector-width: clamp(286px, 22vw, 324px);
+  --layout-topbar-min-height: 44px;
+  --layout-panel-padding: 16px;
+  --workspace-max-width: 1680px;
 }
 
 body[data-theme="dark"] {
@@ -925,6 +926,11 @@ button:disabled,
   display: flex;
   flex-direction: column;
   gap: var(--layout-gap);
+}
+
+.workspace-page {
+  width: min(var(--workspace-max-width), 100%);
+  margin: 0 auto;
 }
 
 .home-hero-shell {
@@ -4041,6 +4047,492 @@ button:disabled,
   background: var(--chrome-inset-surface);
   font-size: 11px;
   font-weight: 700;
+}
+
+/* Large-screen density system for desktop pages */
+@media (min-width: 1101px) {
+  .desktop-stage {
+    padding: 14px 16px 16px;
+  }
+
+  .desktop-topbar {
+    gap: 14px;
+    padding: 6px 14px;
+  }
+
+  .brand-badge {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .brand-copy strong {
+    font-size: 13px;
+  }
+
+  .segment-nav {
+    gap: 4px;
+    padding: 3px;
+  }
+
+  .segment-button {
+    min-width: 66px;
+    height: 28px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
+
+  .topbar-actions {
+    gap: 8px;
+  }
+
+  .account-avatar-badge {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border-radius: 12px;
+  }
+
+  .avatar-button {
+    min-width: 148px;
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+
+  .avatar-button-label {
+    font-size: 13px;
+  }
+
+  .window-control-button {
+    width: 28px;
+    height: 28px;
+  }
+
+  .hero-surface {
+    width: min(1320px, 100%);
+    min-height: calc(100vh - 152px);
+    padding: 32px clamp(22px, 2.6vw, 36px) 28px;
+  }
+
+  .home-copy-block {
+    width: min(680px, 100%);
+  }
+
+  .hero-copy {
+    gap: 14px;
+  }
+
+  .hero-copy h1 {
+    max-width: 760px;
+    font-size: clamp(30px, 2.4vw, 42px);
+  }
+
+  .hero-copy-home p {
+    max-width: 580px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .prompt-composer {
+    width: min(920px, 100%);
+  }
+
+  .prompt-composer-shell {
+    gap: 12px;
+    padding: 16px 16px 14px;
+    border-radius: 22px;
+  }
+
+  .prompt-composer-input {
+    min-height: 102px;
+    padding: 8px 10px 0;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  .prompt-composer-toolbar {
+    gap: 12px;
+    padding-top: 10px;
+  }
+
+  .composer-icon-button {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+
+  .composer-pill,
+  .composer-text-button,
+  .home-starter-chip {
+    min-height: 32px;
+    font-size: 12px;
+  }
+
+  .composer-submit {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  .home-starter-row {
+    width: min(920px, 100%);
+    margin-top: 10px;
+  }
+
+  .home-starter-actions {
+    gap: 8px;
+  }
+
+  .home-capability-grid {
+    width: min(1030px, 100%);
+    gap: 14px;
+    padding-top: 22px;
+  }
+
+  .home-capability-card {
+    gap: 14px;
+    min-height: 188px;
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .home-capability-head {
+    gap: 12px;
+  }
+
+  .home-capability-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .home-capability-copy strong {
+    font-size: 16px;
+  }
+
+  .home-capability-copy p {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .home-capability-metric {
+    min-height: 26px;
+    font-size: 11px;
+  }
+
+  .section-header {
+    margin-bottom: 14px;
+  }
+
+  .section-header h2,
+  .detail-block h3,
+  .overlay-head h2 {
+    font-size: 18px;
+  }
+
+  .workspace-sidebar,
+  .side-switcher {
+    gap: 8px;
+    padding: var(--layout-panel-padding) 12px;
+    border-radius: 18px;
+  }
+
+  .sidebar-switch {
+    padding: 10px;
+  }
+
+  .workspace-toolbar {
+    padding: 12px 16px;
+    border-radius: 18px;
+  }
+
+  .workspace-toolbar-desc {
+    font-size: 13px;
+  }
+
+  .search-sort-row {
+    gap: 10px;
+    align-items: center;
+  }
+
+  .search-shell {
+    min-height: 38px;
+    padding: 0 10px;
+  }
+
+  .search-sort-row > .field,
+  .sort-select {
+    width: 180px;
+  }
+
+  .community-grid-layout,
+  .list-detail-shell,
+  .local-browser,
+  .publisher-page-layout,
+  .manage-hub-users {
+    grid-template-columns: minmax(0, 1.12fr) var(--layout-inspector-width);
+  }
+
+  .manage-pane-grid.departments-workbench {
+    grid-template-columns: minmax(var(--layout-rail-width), 0.72fr) minmax(0, 1fr) var(--layout-inspector-width);
+  }
+
+  .community-content,
+  .publisher-main,
+  .local-main,
+  .detail-panel,
+  .community-side-panel {
+    gap: 12px;
+  }
+
+  .community-grid-layout > .stage-panel {
+    container-type: inline-size;
+    container-name: market-pane;
+  }
+
+  .local-list-panel {
+    container-type: inline-size;
+    container-name: local-pane;
+  }
+
+  .market-grid,
+  .selection-list,
+  .detail-panel .stack-list,
+  .leaderboard-list,
+  .unified-skill-inspector {
+    padding-right: 0;
+  }
+
+  .community-leaderboard-row {
+    min-height: 64px;
+    padding: 9px 10px;
+  }
+
+  .leaderboard-row .initial-badge {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    font-size: 11px;
+  }
+
+  .leaderboard-copy strong {
+    font-size: 12px;
+  }
+
+  .detail-symbol-card {
+    min-height: 120px;
+    border-radius: 16px;
+  }
+
+  .detail-symbol-card .initial-badge.large {
+    width: 72px;
+    height: 72px;
+    font-size: 22px;
+  }
+
+  .unified-skill-symbol {
+    min-height: 108px;
+  }
+
+  .detail-hero {
+    gap: 14px;
+  }
+
+  .detail-hero-copy {
+    gap: 10px;
+  }
+
+  .detail-hero-copy h2 {
+    font-size: 28px;
+  }
+
+  .detail-metric-grid dd {
+    font-size: 16px;
+  }
+
+  .skill-detail-modal {
+    width: min(1040px, calc(100vw - 40px));
+  }
+
+  .review-detail-modal {
+    width: min(1100px, calc(100vw - 40px));
+  }
+
+  .skill-detail-modal .overlay-head {
+    gap: 14px;
+  }
+
+  .skill-detail-head-main {
+    gap: 12px;
+  }
+
+  .skill-detail-head-copy h2 {
+    font-size: 23px;
+  }
+
+  .skill-detail-head-copy p,
+  .skill-detail-page p,
+  .version-history-row p {
+    max-width: 72ch;
+    line-height: 1.6;
+  }
+
+  .skill-detail-section {
+    gap: 12px;
+    padding: 16px 0;
+  }
+
+  .definition-grid.skill-detail-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skill-detail-note-grid {
+    gap: 10px;
+  }
+
+  .skill-detail-note-grid > div {
+    padding: 12px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .workspace-page {
+    width: min(1720px, 100%);
+  }
+
+  .community-grid-layout,
+  .list-detail-shell,
+  .local-browser,
+  .publisher-page-layout,
+  .manage-hub-users {
+    grid-template-columns: minmax(0, 1.18fr) clamp(280px, 20vw, 320px);
+  }
+}
+
+@container market-pane (min-width: 760px) {
+  .market-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .market-card {
+    padding: 14px 14px 12px;
+    border-radius: 16px;
+  }
+
+  .market-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head head"
+      "tags tags"
+      "meta metrics";
+    gap: 10px 14px;
+  }
+
+  .market-card-head {
+    grid-area: head;
+  }
+
+  .market-card-title-row {
+    gap: 10px;
+  }
+
+  .market-card .initial-badge {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .market-card-title strong {
+    font-size: 15px;
+    line-height: 1.28;
+  }
+
+  .market-card-title p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .market-card .pill-row {
+    grid-area: tags;
+    gap: 6px;
+  }
+
+  .market-card .pill {
+    min-height: 22px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .market-metadata {
+    grid-area: meta;
+    gap: 6px;
+  }
+
+  .market-metrics {
+    grid-area: metrics;
+    justify-self: end;
+    align-self: end;
+    gap: 12px;
+  }
+}
+
+@container local-pane (min-width: 760px) {
+  .selection-list {
+    gap: 8px;
+  }
+
+  .local-item {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+  }
+
+  .unified-skill-row {
+    min-height: 112px;
+  }
+
+  .unified-skill-row > .initial-badge {
+    width: 52px;
+    height: 52px;
+    font-size: 13px;
+  }
+
+  .list-row-copy {
+    gap: 6px;
+  }
+
+  .list-row-copy strong {
+    font-size: 15px;
+    line-height: 1.28;
+  }
+
+  .list-row-copy p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .meta-strip,
+  .metric-row {
+    gap: 6px;
+  }
+
+  .metric-chip,
+  .status-chip {
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .skill-side {
+    gap: 8px;
+  }
+
+  .skill-actions {
+    gap: 8px;
+  }
 }
 
 .tone-info {
