@@ -454,19 +454,19 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     presentBlockingConfirm({ type: "confirm", ...input });
   }, [presentBlockingConfirm]);
 
-  const markAppUpdateRead = useCallback(() => {
-    setAppUpdate((current) => (current.unread ? { ...current, unread: false } : current));
-  }, []);
-
   const openAppUpdateModal = useCallback(() => {
-    markAppUpdateRead();
     presentBlockingModal({ type: "app_update" });
-  }, [markAppUpdateRead, presentBlockingModal]);
+  }, [presentBlockingModal]);
 
   const viewAppUpdate = useCallback(() => {
     if (appUpdate.releaseURL && typeof window !== "undefined") {
       void openExternalURL(appUpdate.releaseURL)
-        .then(markAppUpdateRead)
+        .then(() => {
+          if (!appUpdate.blocking) {
+            return dismissOptionalAppUpdate();
+          }
+          return undefined;
+        })
         .catch((error) => {
           setFlash({
             tone: "warning",
@@ -483,17 +483,22 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
       title: "更新入口待接入",
       body: "当前版本先展示版本信息与更新说明，真实下载和升级流程后续接入。"
     });
-  }, [appUpdate.releaseURL, markAppUpdateRead]);
+  }, [appUpdate.blocking, appUpdate.releaseURL, dismissOptionalAppUpdate]);
 
   const markAllNotificationsRead = useCallback(async () => {
-    markAppUpdateRead();
+    if (appUpdate.available && !appUpdate.blocking) {
+      await dismissOptionalAppUpdate();
+    }
     await workspace.markNotificationsRead("all");
-  }, [markAppUpdateRead, workspace]);
+  }, [appUpdate.available, appUpdate.blocking, dismissOptionalAppUpdate, workspace]);
 
   const openDesktopNotification = useCallback(async (notification: DesktopNotificationItem) => {
-    const readPromise = notification.rawNotificationID
-      ? workspace.markNotificationsRead([notification.rawNotificationID])
-      : Promise.resolve().then(markAppUpdateRead);
+    const readPromise =
+      notification.kind === "app_update"
+        ? dismissOptionalAppUpdate()
+        : notification.rawNotificationID
+          ? workspace.markNotificationsRead([notification.rawNotificationID])
+          : Promise.resolve();
 
     const action = resolveDesktopNotificationAction(notification, {
       publisherSubmissions: workspace.publisherData.publisherSkills.map((skill) => ({
@@ -538,7 +543,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     openAppUpdateModal();
     await readPromise;
   }, [
-    markAppUpdateRead,
+    dismissOptionalAppUpdate,
     openAppUpdateModal,
     openCommunityPane,
     openLocalPane,
