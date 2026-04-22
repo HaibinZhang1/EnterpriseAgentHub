@@ -129,6 +129,7 @@ export type ResolvedMode = InstallMode;
 
 export const NotificationType = {
   SkillUpdateAvailable: "skill_update_available",
+  ClientUpdate: "client_update",
   SkillScopeRestricted: "skill_scope_restricted",
   LocalCopyBlocked: "local_copy_blocked",
   ConnectionRestored: "connection_restored",
@@ -141,6 +142,60 @@ export const NotificationType = {
   DisableResult: "disable_result"
 } as const;
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
+
+export const ClientReleasePlatform = {
+  Windows: "windows"
+} as const;
+export type ClientReleasePlatform = (typeof ClientReleasePlatform)[keyof typeof ClientReleasePlatform];
+
+export const ClientReleaseArch = {
+  X64: "x64"
+} as const;
+export type ClientReleaseArch = (typeof ClientReleaseArch)[keyof typeof ClientReleaseArch];
+
+export const ClientReleaseChannel = {
+  Stable: "stable",
+  Internal: "internal",
+  Beta: "beta"
+} as const;
+export type ClientReleaseChannel = (typeof ClientReleaseChannel)[keyof typeof ClientReleaseChannel];
+
+export const ClientReleaseStatus = {
+  Draft: "draft",
+  Published: "published",
+  Paused: "paused",
+  Yanked: "yanked"
+} as const;
+export type ClientReleaseStatus = (typeof ClientReleaseStatus)[keyof typeof ClientReleaseStatus];
+
+export const ClientUpdateCheckStatus = {
+  UpToDate: "up_to_date",
+  UpdateAvailable: "update_available",
+  MandatoryUpdate: "mandatory_update",
+  UnsupportedVersion: "unsupported_version"
+} as const;
+export type ClientUpdateCheckStatus = (typeof ClientUpdateCheckStatus)[keyof typeof ClientUpdateCheckStatus];
+
+export const ClientArtifactSignatureStatus = {
+  Signed: "signed",
+  Unsigned: "unsigned",
+  Unknown: "unknown"
+} as const;
+export type ClientArtifactSignatureStatus = (typeof ClientArtifactSignatureStatus)[keyof typeof ClientArtifactSignatureStatus];
+
+export const ClientUpdateEventType = {
+  Prompted: "prompted",
+  Dismissed: "dismissed",
+  DownloadStarted: "download_started",
+  DownloadFailed: "download_failed",
+  Downloaded: "downloaded",
+  HashFailed: "hash_failed",
+  SignatureFailed: "signature_failed",
+  InstallerStarted: "installer_started",
+  InstallCancelled: "install_cancelled",
+  Installed: "installed"
+} as const;
+export type ClientUpdateEventType = (typeof ClientUpdateEventType)[keyof typeof ClientUpdateEventType];
 
 export const ReviewStatus = {
   Pending: "pending",
@@ -473,6 +528,58 @@ export interface DownloadTicketResponse {
   readonly expiresAt: ISODateTimeString;
 }
 
+export interface ClientUpdateCheckRequest {
+  readonly currentVersion: SemVerString;
+  readonly buildNumber?: string;
+  readonly platform: ClientReleasePlatform;
+  readonly arch: ClientReleaseArch;
+  readonly osVersion?: string;
+  readonly channel: ClientReleaseChannel;
+  readonly deviceID: DeviceID;
+  readonly dismissedVersion?: SemVerString | null;
+}
+
+export interface ClientUpdateCheckResponse {
+  readonly status: ClientUpdateCheckStatus;
+  readonly updateType: "none" | "optional" | "mandatory" | "unsupported";
+  readonly currentVersion: SemVerString;
+  readonly latestVersion: SemVerString | null;
+  readonly releaseID?: string;
+  readonly channel: ClientReleaseChannel;
+  readonly packageName?: string;
+  readonly sizeBytes?: number;
+  readonly sha256?: `sha256:${string}`;
+  readonly publishedAt?: ISODateTimeString;
+  readonly releaseNotes?: string;
+  readonly mandatory: boolean;
+  readonly minSupportedVersion?: SemVerString | null;
+  readonly downloadTicketRequired: boolean;
+}
+
+export interface ClientUpdateDownloadTicketResponse {
+  readonly releaseID: string;
+  readonly version: SemVerString;
+  readonly downloadURL: string;
+  readonly expiresAt: ISODateTimeString;
+  readonly packageName: string;
+  readonly sizeBytes: number;
+  readonly sha256: `sha256:${string}`;
+  readonly signatureStatus: ClientArtifactSignatureStatus;
+}
+
+export interface ReportClientUpdateEventRequest {
+  readonly releaseID?: string | null;
+  readonly deviceID: DeviceID;
+  readonly eventType: ClientUpdateEventType;
+  readonly fromVersion: SemVerString;
+  readonly toVersion?: SemVerString | null;
+  readonly errorCode?: string | null;
+}
+
+export interface ReportClientUpdateEventResponse {
+  readonly accepted: true;
+}
+
 export interface StarResponse {
   readonly skillID: SkillID;
   readonly starred: boolean;
@@ -484,7 +591,7 @@ export interface Notification {
   readonly type: NotificationType;
   readonly title: string;
   readonly summary: string;
-  readonly objectType?: "skill" | "tool" | "project" | "connection";
+  readonly objectType?: "skill" | "tool" | "project" | "connection" | "client_update";
   readonly objectID?: string;
   readonly createdAt: ISODateTimeString;
   readonly read: boolean;
@@ -560,6 +667,73 @@ export interface AdminSkill {
   readonly starCount: number;
   readonly downloadCount: number;
   readonly updatedAt: ISODateTimeString;
+}
+
+export interface ClientUpdateReleaseArtifact {
+  readonly artifactID: string;
+  readonly bucket: string;
+  readonly objectKey: string;
+  readonly packageName: string;
+  readonly sizeBytes: number;
+  readonly sha256: `sha256:${string}`;
+  readonly signatureStatus: ClientArtifactSignatureStatus;
+  readonly createdAt: ISODateTimeString;
+}
+
+export interface ClientUpdateReleaseSummary {
+  readonly releaseID: string;
+  readonly version: SemVerString;
+  readonly buildNumber?: string | null;
+  readonly platform: ClientReleasePlatform;
+  readonly arch: ClientReleaseArch;
+  readonly channel: ClientReleaseChannel;
+  readonly status: ClientReleaseStatus;
+  readonly mandatory: boolean;
+  readonly minSupportedVersion?: SemVerString | null;
+  readonly rolloutPercent: number;
+  readonly releaseNotes: string;
+  readonly publishedAt?: ISODateTimeString | null;
+  readonly createdAt: ISODateTimeString;
+  readonly updatedAt: ISODateTimeString;
+  readonly publishedBy?: UserID | null;
+  readonly createdBy: UserID;
+  readonly latestEventAt?: ISODateTimeString | null;
+  readonly eventCount: number;
+  readonly artifact?: ClientUpdateReleaseArtifact;
+}
+
+export interface CreateClientUpdateReleaseRequest {
+  readonly version: SemVerString;
+  readonly buildNumber?: string;
+  readonly platform: ClientReleasePlatform;
+  readonly arch: ClientReleaseArch;
+  readonly channel: ClientReleaseChannel;
+  readonly mandatory?: boolean;
+  readonly minSupportedVersion?: SemVerString | null;
+  readonly rolloutPercent?: number;
+  readonly releaseNotes: string;
+}
+
+export interface RegisterClientUpdateArtifactRequest {
+  readonly packageName: string;
+  readonly sizeBytes: number;
+  readonly sha256: `sha256:${string}`;
+  readonly signatureStatus: ClientArtifactSignatureStatus;
+  readonly objectKey?: string;
+}
+
+export interface PublishClientUpdateReleaseRequest {
+  readonly mandatory?: boolean;
+  readonly minSupportedVersion?: SemVerString | null;
+  readonly rolloutPercent?: number;
+}
+
+export interface UpdateClientUpdateRolloutRequest {
+  readonly rolloutPercent: number;
+}
+
+export interface ClientUpdateReleaseActionRequest {
+  readonly reason?: string;
 }
 
 export interface ReviewItem {
