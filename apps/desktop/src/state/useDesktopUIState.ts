@@ -14,11 +14,24 @@ import { defaultPreferences, loadPreferences, PREFERENCES_STORAGE_KEY, resolveDi
 import { useTargetsModalState } from "./ui/useTargetsModalState.ts";
 import { useLocalConfigEditors } from "./ui/useLocalConfigEditors.ts";
 import { useInstalledSkillsView } from "./ui/useInstalledSkillsView.ts";
-import type { AppUpdateState, DesktopNotificationItem } from "./ui/desktopNotifications.ts";
+import type { DesktopNotificationItem } from "./ui/desktopNotifications.ts";
 import { deriveDesktopNotifications, notificationBadgeLabel, resolveDesktopNotificationAction } from "./ui/desktopNotifications.ts";
+import {
+  cacheClientUpdateCheck,
+  defaultAppUpdateState,
+  deriveAppUpdateState,
+  dismissOptionalClientUpdate,
+  extractServerAppUpdateNotification,
+  readClientUpdateCache,
+  shouldUseCachedClientUpdate,
+  writeClientUpdateCache,
+  type AppUpdateState,
+  type ClientUpdateCache
+} from "./ui/clientUpdates.ts";
 import type { InstalledListFilter } from "./ui/installedSkillsTypes.ts";
 import type { DisplayLanguage } from "../ui/desktopShared.tsx";
 import { openExternalURL } from "../services/externalLinks.ts";
+import { clearRemoteWriteGuardStatus, p1Client, setRemoteWriteGuardStatus } from "../services/p1Client.ts";
 import { themeLabel } from "../ui/themeLabels.ts";
 
 export { buildPublishPrecheck } from "./ui/publishPrecheck.ts";
@@ -158,22 +171,10 @@ function isDetailOverlay(overlay: OverlayState): boolean {
   return overlay.kind === "skill_detail" || overlay.kind === "review_detail";
 }
 
-function defaultAppUpdateState(): AppUpdateState {
-  return {
-    available: true,
-    currentVersion: packageInfo.version,
-    latestVersion: "0.1.3",
-    summary: "顶栏导航、发布中心覆盖层和本地工作台重建。",
-    highlights: [
-      "一级导航收敛为社区、主页、本地、管理",
-      "发布中心改为覆盖层工作台",
-      "本地工具和项目统一收口到本地页"
-    ],
-    occurredAt: "2026-04-18T09:00:00.000Z",
-    unread: true,
-    releaseURL: null,
-    actionLabel: "查看更新"
-  };
+function appUpdateSettingsStatus(appUpdate: AppUpdateState): string {
+  if (appUpdate.status === "mandatory_update") return "必须更新";
+  if (appUpdate.status === "unsupported_version") return "版本过低";
+  return appUpdate.available ? "有更新" : "已是最新";
 }
 
 export function buildSettingsPanels(input: {
@@ -187,7 +188,7 @@ export function buildSettingsPanels(input: {
     { id: "general", title: "常规偏好", description: "语言、主题", status: themeLabel(input.theme, input.language) },
     { id: "agent", title: "Agent 接入", description: "模型服务、API Key", status: input.hasAgentKey ? "已保存" : "待配置" },
     { id: "local", title: "本地环境", description: "Central Store、服务地址", status: input.connectionStatus === "connected" ? "已连接" : "本地可用" },
-    { id: "sync", title: "同步与更新", description: "通知、启动上下文", status: input.appUpdate.available ? "有更新" : "已是最新" },
+    { id: "sync", title: "同步与更新", description: "通知、启动上下文", status: appUpdateSettingsStatus(input.appUpdate) },
     { id: "about", title: "关于", description: "软件信息、版本、仓库", status: `v${input.appUpdate.currentVersion}` }
   ];
 }
@@ -207,7 +208,9 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   const [modal, setModal] = useState<DesktopModalState>({ type: "none" });
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   const [flash, setFlash] = useState<FlashMessage | null>(null);
-  const [appUpdate, setAppUpdate] = useState<AppUpdateState>(() => defaultAppUpdateState());
+  const [clientUpdateCache, setClientUpdateCache] = useState<ClientUpdateCache | null>(() => readClientUpdateCache());
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState(false);
+  const [appUpdateError, setAppUpdateError] = useState<string | null>(null);
 
   const language = useMemo<DisplayLanguage>(
     () => resolveDisplayLanguage(preferences, workspace.currentUser.locale),
@@ -220,6 +223,85 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     document.body.dataset.theme = preferences.theme;
     document.documentElement.lang = language;
   }, [language, preferences]);
+
+  const appUpdate = useMemo(
+    () =>
+      deriveAppUpdateState({
+        currentVersion: packageInfo.version,
+        cache: clientUpdateCache,
+        notifications: workspace.notifications,
+        lastError: appUpdateError,
+        checking: checkingAppUpdate
+      }),
+    [appUpdateError, checkingAppUpdate, clientUpdateCache, workspace.notifications]
+  );
+
+  const refreshAppUpdate = useCallback(async (options: { force?: boolean } = {}) => {
+    if (!workspace.loggedIn || workspace.bootstrap.connection.status !== "connected") {
+      clearRemoteWriteGuardStatus();
+      return null;
+    }
+
+    if (!options.force && shouldUseCachedClientUpdate(clientUpdateCache, packageInfo.version)) {
+      setAppUpdateError(null);
+      return clientUpdateCache;
+    }
+
+    setCheckingAppUpdate(true);
+    try {
+      const checkResult = await p1Client.checkClientUpdate({
+        currentVersion: packageInfo.version,
+        platform: "windows",
+        arch: "x64",
+        channel: "stable"
+      });
+      const nextCache = cacheClientUpdateCheck(checkResult, clientUpdateCache);
+      setClientUpdateCache(nextCache);
+      writeClientUpdateCache(nextCache);
+      setAppUpdateError(null);
+      return nextCache;
+    } catch (error) {
+      setAppUpdateError(error instanceof Error ? error.message : "检查更新失败，请稍后重试。");
+      return null;
+    } finally {
+      setCheckingAppUpdate(false);
+    }
+  }, [clientUpdateCache, workspace.bootstrap.connection.status, workspace.loggedIn]);
+
+  const dismissOptionalAppUpdate = useCallback(async () => {
+    if (!appUpdate.available || appUpdate.blocking) return;
+    const nextCache = dismissOptionalClientUpdate(clientUpdateCache, appUpdate);
+    setClientUpdateCache(nextCache);
+    writeClientUpdateCache(nextCache);
+
+    const serverNotificationIDs = workspace.notifications
+      .filter((notification) => {
+        const serverNotice = extractServerAppUpdateNotification(notification);
+        return serverNotice?.releaseID === appUpdate.releaseID && serverNotice.latestVersion === appUpdate.latestVersion;
+      })
+      .map((notification) => notification.notificationID);
+
+    if (serverNotificationIDs.length > 0) {
+      await workspace.markNotificationsRead(serverNotificationIDs);
+    }
+  }, [appUpdate, clientUpdateCache, workspace]);
+
+  useEffect(() => {
+    if (!workspace.loggedIn || workspace.bootstrap.connection.status !== "connected") {
+      clearRemoteWriteGuardStatus();
+      setCheckingAppUpdate(false);
+      return;
+    }
+    void refreshAppUpdate();
+  }, [refreshAppUpdate, workspace.bootstrap.connection.status, workspace.loggedIn]);
+
+  useEffect(() => {
+    if (workspace.loggedIn && workspace.bootstrap.connection.status === "connected" && (appUpdate.status === "mandatory_update" || appUpdate.status === "unsupported_version")) {
+      setRemoteWriteGuardStatus(appUpdate.status);
+      return;
+    }
+    clearRemoteWriteGuardStatus();
+  }, [appUpdate.status, workspace.bootstrap.connection.status, workspace.loggedIn]);
 
   const desktopNotifications = useMemo(
     () =>
@@ -372,19 +454,19 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     presentBlockingConfirm({ type: "confirm", ...input });
   }, [presentBlockingConfirm]);
 
-  const markAppUpdateRead = useCallback(() => {
-    setAppUpdate((current) => (current.unread ? { ...current, unread: false } : current));
-  }, []);
-
   const openAppUpdateModal = useCallback(() => {
-    markAppUpdateRead();
     presentBlockingModal({ type: "app_update" });
-  }, [markAppUpdateRead, presentBlockingModal]);
+  }, [presentBlockingModal]);
 
   const viewAppUpdate = useCallback(() => {
     if (appUpdate.releaseURL && typeof window !== "undefined") {
       void openExternalURL(appUpdate.releaseURL)
-        .then(markAppUpdateRead)
+        .then(() => {
+          if (!appUpdate.blocking) {
+            return dismissOptionalAppUpdate();
+          }
+          return undefined;
+        })
         .catch((error) => {
           setFlash({
             tone: "warning",
@@ -395,23 +477,47 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
       return;
     }
 
-    markAppUpdateRead();
+    if (!appUpdate.blocking) {
+      void dismissOptionalAppUpdate();
+    }
     setFlash({
       tone: "info",
       title: "更新入口待接入",
       body: "当前版本先展示版本信息与更新说明，真实下载和升级流程后续接入。"
     });
-  }, [appUpdate.releaseURL, markAppUpdateRead]);
+  }, [appUpdate.blocking, appUpdate.releaseURL, dismissOptionalAppUpdate]);
+
+  const recheckAppUpdate = useCallback(async () => {
+    const refreshed = await refreshAppUpdate({ force: true });
+    if (refreshed) {
+      setFlash({
+        tone: "success",
+        title: "更新状态已刷新",
+        body: "已按最新服务端状态刷新桌面客户端更新信息。"
+      });
+      return;
+    }
+    setFlash({
+      tone: "warning",
+      title: "检查更新失败",
+      body: appUpdateError ?? "请稍后重试。"
+    });
+  }, [appUpdateError, refreshAppUpdate]);
 
   const markAllNotificationsRead = useCallback(async () => {
-    markAppUpdateRead();
+    if (appUpdate.available && !appUpdate.blocking) {
+      await dismissOptionalAppUpdate();
+    }
     await workspace.markNotificationsRead("all");
-  }, [markAppUpdateRead, workspace]);
+  }, [appUpdate.available, appUpdate.blocking, dismissOptionalAppUpdate, workspace]);
 
   const openDesktopNotification = useCallback(async (notification: DesktopNotificationItem) => {
-    const readPromise = notification.rawNotificationID
-      ? workspace.markNotificationsRead([notification.rawNotificationID])
-      : Promise.resolve().then(markAppUpdateRead);
+    const readPromise =
+      notification.kind === "app_update"
+        ? dismissOptionalAppUpdate()
+        : notification.rawNotificationID
+          ? workspace.markNotificationsRead([notification.rawNotificationID])
+          : Promise.resolve();
 
     const action = resolveDesktopNotificationAction(notification, {
       publisherSubmissions: workspace.publisherData.publisherSkills.map((skill) => ({
@@ -456,7 +562,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     openAppUpdateModal();
     await readPromise;
   }, [
-    markAppUpdateRead,
+    dismissOptionalAppUpdate,
     openAppUpdateModal,
     openCommunityPane,
     openLocalPane,
@@ -582,6 +688,8 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     openSettingsModal,
     openAppUpdateModal,
     markAllNotificationsRead,
+    dismissOptionalAppUpdate,
+    recheckAppUpdate,
     viewAppUpdate,
     openConfirm,
     setNotificationFilter,
