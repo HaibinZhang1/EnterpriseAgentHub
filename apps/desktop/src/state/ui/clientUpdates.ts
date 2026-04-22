@@ -326,7 +326,7 @@ export function deriveAppUpdateState(input: {
         ) ?? null
       : serverNotices[0] ?? null;
 
-  const source = cachedSource ?? (matchedServerNotice
+  const baseSource = cachedSource ?? (matchedServerNotice
     ? {
         status: matchedServerNotice.status,
         latestVersion: matchedServerNotice.latestVersion,
@@ -341,6 +341,16 @@ export function deriveAppUpdateState(input: {
         lastCheckedAt: null
       }
     : null);
+  const source =
+    baseSource && matchedServerNotice
+      ? {
+          ...baseSource,
+          status: matchedServerNotice.status,
+          releaseNotes: matchedServerNotice.releaseNotes || baseSource.releaseNotes,
+          releaseURL: matchedServerNotice.releaseURL ?? baseSource.releaseURL,
+          occurredAt: matchedServerNotice.occurredAt || baseSource.occurredAt
+        }
+      : baseSource;
 
   if (!source || source.status === "up_to_date") {
     return {
