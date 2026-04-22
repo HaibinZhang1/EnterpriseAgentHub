@@ -14,11 +14,24 @@ import { defaultPreferences, loadPreferences, PREFERENCES_STORAGE_KEY, resolveDi
 import { useTargetsModalState } from "./ui/useTargetsModalState.ts";
 import { useLocalConfigEditors } from "./ui/useLocalConfigEditors.ts";
 import { useInstalledSkillsView } from "./ui/useInstalledSkillsView.ts";
-import type { AppUpdateState, DesktopNotificationItem } from "./ui/desktopNotifications.ts";
+import type { DesktopNotificationItem } from "./ui/desktopNotifications.ts";
 import { deriveDesktopNotifications, notificationBadgeLabel, resolveDesktopNotificationAction } from "./ui/desktopNotifications.ts";
+import {
+  cacheClientUpdateCheck,
+  defaultAppUpdateState,
+  deriveAppUpdateState,
+  dismissOptionalClientUpdate,
+  extractServerAppUpdateNotification,
+  readClientUpdateCache,
+  shouldUseCachedClientUpdate,
+  writeClientUpdateCache,
+  type AppUpdateState,
+  type ClientUpdateCache
+} from "./ui/clientUpdates.ts";
 import type { InstalledListFilter } from "./ui/installedSkillsTypes.ts";
 import type { DisplayLanguage } from "../ui/desktopShared.tsx";
 import { openExternalURL } from "../services/externalLinks.ts";
+import { clearRemoteWriteGuardStatus, p1Client, setRemoteWriteGuardStatus } from "../services/p1Client.ts";
 import { themeLabel } from "../ui/themeLabels.ts";
 
 export { buildPublishPrecheck } from "./ui/publishPrecheck.ts";
@@ -158,22 +171,10 @@ function isDetailOverlay(overlay: OverlayState): boolean {
   return overlay.kind === "skill_detail" || overlay.kind === "review_detail";
 }
 
-function defaultAppUpdateState(): AppUpdateState {
-  return {
-    available: true,
-    currentVersion: packageInfo.version,
-    latestVersion: "0.1.3",
-    summary: "顶栏导航、发布中心覆盖层和本地工作台重建。",
-    highlights: [
-      "一级导航收敛为社区、主页、本地、管理",
-      "发布中心改为覆盖层工作台",
-      "本地工具和项目统一收口到本地页"
-    ],
-    occurredAt: "2026-04-18T09:00:00.000Z",
-    unread: true,
-    releaseURL: null,
-    actionLabel: "查看更新"
-  };
+function appUpdateSettingsStatus(appUpdate: AppUpdateState): string {
+  if (appUpdate.status === "mandatory_update") return "必须更新";
+  if (appUpdate.status === "unsupported_version") return "版本过低";
+  return appUpdate.available ? "有更新" : "已是最新";
 }
 
 export function buildSettingsPanels(input: {
@@ -187,7 +188,7 @@ export function buildSettingsPanels(input: {
     { id: "general", title: "常规偏好", description: "语言、主题", status: themeLabel(input.theme, input.language) },
     { id: "agent", title: "Agent 接入", description: "模型服务、API Key", status: input.hasAgentKey ? "已保存" : "待配置" },
     { id: "local", title: "本地环境", description: "Central Store、服务地址", status: input.connectionStatus === "connected" ? "已连接" : "本地可用" },
-    { id: "sync", title: "同步与更新", description: "通知、启动上下文", status: input.appUpdate.available ? "有更新" : "已是最新" },
+    { id: "sync", title: "同步与更新", description: "通知、启动上下文", status: appUpdateSettingsStatus(input.appUpdate) },
     { id: "about", title: "关于", description: "软件信息、版本、仓库", status: `v${input.appUpdate.currentVersion}` }
   ];
 }
@@ -207,7 +208,9 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
   const [modal, setModal] = useState<DesktopModalState>({ type: "none" });
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   const [flash, setFlash] = useState<FlashMessage | null>(null);
-  const [appUpdate, setAppUpdate] = useState<AppUpdateState>(() => defaultAppUpdateState());
+  const [clientUpdateCache, setClientUpdateCache] = useState<ClientUpdateCache | null>(() => readClientUpdateCache());
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState(false);
+  const [appUpdateError, setAppUpdateError] = useState<string | null>(null);
 
   const language = useMemo<DisplayLanguage>(
     () => resolveDisplayLanguage(preferences, workspace.currentUser.locale),
@@ -220,6 +223,18 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     document.body.dataset.theme = preferences.theme;
     document.documentElement.lang = language;
   }, [language, preferences]);
+
+  const appUpdate = useMemo(
+    () =>
+      deriveAppUpdateState({
+        currentVersion: packageInfo.version,
+        cache: clientUpdateCache,
+        notifications: workspace.notifications,
+        lastError: appUpdateError,
+        checking: checkingAppUpdate
+      }),
+    [appUpdateError, checkingAppUpdate, clientUpdateCache, workspace.notifications]
+  );
 
   const desktopNotifications = useMemo(
     () =>
