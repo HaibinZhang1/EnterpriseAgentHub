@@ -104,15 +104,17 @@ export async function requestJSON<T>(
     serverURL: string;
     method?: string;
     headers?: Record<string, string>;
-    body?: BodyInit | null;
+    body?: unknown;
   },
 ): Promise<T> {
   const response = await fetch(new URL(path, ensureTrailingSlash(init.serverURL)), {
     method: init.method ?? 'GET',
     headers: init.headers,
-    body: init.body,
+    body: init.body as never,
   });
-  const payload = await response.json().catch(() => null);
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: { message?: string } }
+    | null;
   if (!response.ok) {
     throw new Error(payload?.error?.message ?? `${response.status} ${response.statusText}`);
   }
