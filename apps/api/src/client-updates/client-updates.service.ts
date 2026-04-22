@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   ClientArtifactSignatureStatus,
@@ -231,7 +232,7 @@ export class ClientUpdatesService {
     releaseID: string,
     ticket: string | undefined,
     requesterUserID: string | null,
-  ): Promise<{ stream: NodeJS.ReadableStream; fileName: string; contentLength: number }> {
+  ): Promise<{ stream: Readable; fileName: string; contentLength: number }> {
     if (!ticket || !requesterUserID) {
       throw new ForbiddenException('permission_denied');
     }
@@ -301,7 +302,7 @@ export class ClientUpdatesService {
             objectKey: release.artifact_object_key ?? '',
             packageName: release.artifact_package_name ?? '',
             sizeBytes: Number(release.artifact_size_bytes ?? 0),
-            sha256: (release.artifact_sha256 ?? sha256Buffer(Buffer.from(release.artifact_object_key ?? release.release_id))) as `sha256:${string}`,
+            sha256: release.artifact_sha256 as `sha256:${string}`,
             signatureStatus: (release.artifact_signature_status ?? 'unknown') as ClientArtifactSignatureStatus,
             createdAt: release.artifact_created_at?.toISOString() ?? release.created_at.toISOString(),
           }
