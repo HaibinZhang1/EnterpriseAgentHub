@@ -197,8 +197,8 @@ test("clearing a confirm modal does not touch the skill detail overlay", () => {
 });
 
 test("new top-level navigation only shows manage when admin capability is available", () => {
-  assert.deepEqual(deriveTopLevelNavigation({ isAdminConnected: false }), ["home", "community", "local"]);
-  assert.deepEqual(deriveTopLevelNavigation({ isAdminConnected: true }), ["home", "community", "local", "manage"]);
+  assert.deepEqual(deriveTopLevelNavigation({ isAdminConnected: false }), ["community", "home", "local"]);
+  assert.deepEqual(deriveTopLevelNavigation({ isAdminConnected: true }), ["community", "home", "local", "manage"]);
 });
 
 test("legacy pages map into the new section model", () => {

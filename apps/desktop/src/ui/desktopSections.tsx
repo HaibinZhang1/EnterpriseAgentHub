@@ -292,9 +292,6 @@ function UnifiedSkillInspector({
 }) {
   const content = (
     <>
-      <div className="detail-symbol-card unified-skill-symbol">
-        <InitialBadge label={view.iconLabel} large />
-      </div>
       <div className="detail-block">
         <div className="inspector-kicker">Skill 简介</div>
         <strong>{view.displayName}</strong>
@@ -1598,6 +1595,19 @@ export function CommunitySection({ workspace, ui }: SectionProps) {
   const categories = ["all", ...workspace.categories];
   const activeTags = workspace.filters.tags;
   const isCommunityResultsEmpty = workspace.marketSkills.length === 0;
+  const communityScopeLabel = workspace.loggedIn
+    ? workspace.bootstrap.connection.status === "connected"
+      ? "企业服务在线"
+      : "离线缓存模式"
+    : "游客缓存模式";
+  const communitySortLabel = {
+    composite: "综合排序",
+    latest_published: "最新发布",
+    recently_updated: "最近更新",
+    download_count: "下载量优先",
+    star_count: "Star 优先",
+    relevance: "相关度优先"
+  }[workspace.filters.sort];
   const discoverEntries = [
     { id: "skills", label: "Skills", icon: <Sparkles size={16} /> },
     { id: "mcp", label: "MCP", icon: <Link2 size={16} /> },
@@ -1647,6 +1657,10 @@ export function CommunitySection({ workspace, ui }: SectionProps) {
                 />
               ) : null}
               <section className="stage-panel community-filter-panel">
+                <div className="meta-strip">
+                  <span className="metric-chip">当前 {workspace.marketSkills.length} 个结果</span>
+                  <span className="metric-chip">{communityScopeLabel}</span>
+                </div>
                 <div className="search-sort-row">
                   <label className="search-shell">
                     <Search size={16} />
@@ -1729,6 +1743,10 @@ export function CommunitySection({ workspace, ui }: SectionProps) {
               </section>
               <div className="community-grid-layout" data-empty={isCommunityResultsEmpty ? "true" : undefined}>
                 <section className="stage-panel community-results-panel" data-empty={isCommunityResultsEmpty ? "true" : undefined}>
+                  <div className="meta-strip">
+                    <span className="metric-chip">{workspace.filters.category === "all" ? "全部分类" : workspace.filters.category}</span>
+                    <span className="metric-chip">{communitySortLabel}</span>
+                  </div>
                   {isCommunityResultsEmpty ? <SectionEmpty title="没有符合筛选的 Skill" body="换一个搜索词或标签再试一次。" /> : null}
                   <div className="market-grid">
                     {workspace.marketSkills.map((skill) => (
@@ -1985,6 +2003,9 @@ function LocalToolsAndProjects({
     <div className="local-single-list-shell">
       <section className="stage-panel list-panel local-list-panel">
         <div className="local-filter-shell">
+          <div className="meta-strip">
+            <span className="metric-chip">当前 {filteredEntities.length} 项</span>
+          </div>
           <div className="search-sort-row list-toolbar-row">
             <label className="search-shell">
               <Search size={16} />
@@ -2150,6 +2171,10 @@ export function LocalSection({ workspace, ui }: SectionProps) {
             <div className="list-detail-shell local-browser has-detail" data-empty={isLocalSkillsEmptyState ? "true" : undefined}>
               <section className="stage-panel list-panel local-list-panel" data-empty={isLocalSkillsEmptyState ? "true" : undefined}>
                 <div className="local-filter-shell">
+                  <div className="meta-strip">
+                    <span className="metric-chip">已纳管 {ui.installedView.filteredInstalledSkills.length}</span>
+                    <span className="metric-chip">待处理 {filteredDiscoveredSkills.length}</span>
+                  </div>
                   <div className="search-sort-row list-toolbar-row">
                     <label className="search-shell">
                       <Search size={16} />
@@ -2226,7 +2251,7 @@ export function LocalSection({ workspace, ui }: SectionProps) {
               ) : selectedDiscoveredSkill ? (
                 <LocalDiscoveredSkillDetail workspace={workspace} ui={ui} skill={selectedDiscoveredSkill} />
               ) : (
-                <aside className="detail-panel inspector-panel detail-placeholder-panel"><SectionEmpty title="选择一个 Skill 查看详情" /></aside>
+                <aside className="detail-panel inspector-panel detail-placeholder-panel"><SectionEmpty title="选择一个 Skill 查看详情" body="右侧会集中展示版本、范围、风险摘要和下一步动作。" compact align="start" /></aside>
               )}
             </div>
           ) : null}
@@ -2323,20 +2348,30 @@ function ManageReviewsPane({ workspace, ui }: SectionProps) {
   const warningPrechecks = selectedReview?.precheckResults.filter((item) => item.status === "warn") ?? [];
   const latestHistory = selectedReview?.history[selectedReview.history.length - 1] ?? null;
   const selectedChangeLines = selectedReview ? reviewChangeLines(selectedReview, ui.language) : [];
+  const pendingCount = workspace.adminData.reviews.filter((review) => review.reviewStatus === "pending").length;
+  const inReviewCount = workspace.adminData.reviews.filter((review) => review.reviewStatus === "in_review").length;
+  const reviewedCount = workspace.adminData.reviews.filter((review) => review.reviewStatus === "reviewed").length;
 
   return (
     <div className="manage-pane-grid reviews">
       <section className="stage-panel list-panel">
-        <div className="inline-actions wrap">
-          {([
-            ["pending", "待审核"],
-            ["in_review", "审核中"],
-            ["reviewed", "已审核"]
-          ] as const).map(([tab, label]) => (
-            <button key={tab} className={ui.reviewTab === tab ? "btn btn-primary btn-small" : "btn btn-small"} type="button" onClick={() => ui.setReviewTab(tab)}>
-              {label}
-            </button>
-          ))}
+        <div className="manage-panel-toolbar stack">
+          <div className="meta-strip">
+            <span className="metric-chip">待审核 {pendingCount}</span>
+            <span className="metric-chip">审核中 {inReviewCount}</span>
+            <span className="metric-chip">已审核 {reviewedCount}</span>
+          </div>
+          <div className="inline-actions wrap">
+            {([
+              ["pending", "待审核"],
+              ["in_review", "审核中"],
+              ["reviewed", "已审核"]
+            ] as const).map(([tab, label]) => (
+              <button key={tab} className={ui.reviewTab === tab ? "btn btn-primary btn-small" : "btn btn-small"} type="button" onClick={() => ui.setReviewTab(tab)}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="stack-list">
           {ui.filteredReviews.length === 0 ? <SectionEmpty title="当前没有审核单" body="待审核、审核中和已审核会根据当前筛选展示在这里。" /> : null}
@@ -2371,23 +2406,18 @@ function ManageReviewsPane({ workspace, ui }: SectionProps) {
           <SectionEmpty title="选择一条审核单查看摘要" body="工作台右侧用于快速判断，完整处理请进入审核详情。" />
         ) : (
           <>
-            <div className="detail-hero compact">
-              <div className="detail-symbol-card manage-symbol-card">
-                <InitialBadge label={selectedReview.skillDisplayName} large />
+            <div className="detail-block">
+              <div className="pill-row">
+                <TagPill tone={reviewStatusTone(selectedReview)}>
+                  {workflowStateLabel(selectedReview.workflowState, ui.language)}
+                </TagPill>
+                <TagPill tone={riskToneForLevel(selectedReview.riskLevel)}>
+                  {reviewRiskText(selectedReview.riskLevel)}
+                </TagPill>
+                <TagPill tone="neutral">{submissionTypeLabel(selectedReview.reviewType, ui.language)}</TagPill>
               </div>
-              <div className="detail-hero-copy">
-                <div className="pill-row">
-                  <TagPill tone={reviewStatusTone(selectedReview)}>
-                    {workflowStateLabel(selectedReview.workflowState, ui.language)}
-                  </TagPill>
-                  <TagPill tone={riskToneForLevel(selectedReview.riskLevel)}>
-                    {reviewRiskText(selectedReview.riskLevel)}
-                  </TagPill>
-                  <TagPill tone="neutral">{submissionTypeLabel(selectedReview.reviewType, ui.language)}</TagPill>
-                </div>
-                <h3>{selectedReview.skillDisplayName}</h3>
-                <p>{selectedReview.summary || selectedReview.description}</p>
-              </div>
+              <h3>{selectedReview.skillDisplayName}</h3>
+              <p>{selectedReview.summary || selectedReview.description}</p>
             </div>
             <div className="definition-grid split">
               <div><dt>提交人</dt><dd>{selectedReview.submitterName}</dd></div>
@@ -2476,6 +2506,13 @@ function ManageSkillsPane({ workspace, ui }: SectionProps) {
     setSelectedSkillID((current) => (visibleManagedSkills.some((skill) => skill.skillID === current) ? current : visibleManagedSkills[0]?.skillID ?? null));
   }, [visibleManagedSkills]);
 
+  const statusCounts = {
+    all: managedSkills.length,
+    published: managedSkills.filter((skill) => skill.status === "published").length,
+    delisted: managedSkills.filter((skill) => skill.status === "delisted").length,
+    archived: managedSkills.filter((skill) => skill.status === "archived").length
+  } as const;
+
   const selectedSkill = managedSkills.find((skill) => skill.skillID === selectedSkillID) ?? null;
   const selectedSkillView = selectedSkill ? adminSkillView(selectedSkill, ui.language) : null;
 
@@ -2483,17 +2520,6 @@ function ManageSkillsPane({ workspace, ui }: SectionProps) {
     <div className="manage-pane-grid skills-workbench">
       <section className="stage-panel list-panel manage-list-panel manage-skills-list-panel">
         <div className="local-filter-shell manage-skills-filter">
-          <div className="manage-list-toolbar-row">
-            <div>
-              <div className="eyebrow">Skill 治理列表</div>
-            </div>
-            <div className="definition-grid split compact-metrics">
-              <div><dt>总数</dt><dd>{managedSkills.length}</dd></div>
-              <div><dt>已上架</dt><dd>{managedSkills.filter((skill) => skill.status === "published").length}</dd></div>
-              <div><dt>已下架</dt><dd>{managedSkills.filter((skill) => skill.status === "delisted").length}</dd></div>
-              <div><dt>已归档</dt><dd>{managedSkills.filter((skill) => skill.status === "archived").length}</dd></div>
-            </div>
-          </div>
           <label className="search-shell">
             <Search size={16} />
             <input
@@ -2517,7 +2543,8 @@ function ManageSkillsPane({ workspace, ui }: SectionProps) {
                 type="button"
                 onClick={() => setStatusFilter(key)}
               >
-                {label}
+                <span>{label}</span>
+                <span className="filter-button-count" aria-hidden="true">{statusCounts[key]}</span>
               </button>
             ))}
           </div>
@@ -2551,7 +2578,7 @@ function ManageSkillsPane({ workspace, ui }: SectionProps) {
       </section>
       {!selectedSkill || !selectedSkillView ? (
         <aside className="detail-panel inspector-panel manage-summary-panel">
-          <SectionEmpty title="选择一个 Skill 查看详情" />
+          <SectionEmpty title="选择一个 Skill 查看详情" body="右侧会展示发布者、风险、公开级别和可执行治理动作。" compact align="start" />
         </aside>
       ) : (
         <UnifiedSkillInspector
@@ -2646,9 +2673,6 @@ function ManageDepartmentsPane({ workspace }: { workspace: P1WorkspaceState }) {
       <section className="stage-panel list-panel manage-tree-panel">
         <div className="local-filter-shell">
           <div className="manage-list-toolbar-row">
-            <div>
-              <div className="eyebrow">部门树</div>
-            </div>
             <button className="btn btn-primary" type="button" onClick={() => setCreateModalOpen(true)} disabled={!createParentDepartment}>
               <Plus size={14} />
               新增部门
@@ -2704,10 +2728,10 @@ function ManageDepartmentsPane({ workspace }: { workspace: P1WorkspaceState }) {
             </div>
 
             <div className="manage-metrics-grid">
-              <article className="manage-metric-card"><span>直属下级</span><strong>{departmentWorkbench.childDepartments.length}</strong><small>可继续扩展组织层级</small></article>
-              <article className="manage-metric-card"><span>范围用户</span><strong>{departmentWorkbench.scopedUsers.length}</strong><small>本部门及所有后代部门</small></article>
-              <article className="manage-metric-card"><span>直属管理员</span><strong>{directManagers.length}</strong><small>每个部门至少一名管理员</small></article>
-              <article className="manage-metric-card"><span>Skill 数</span><strong>{departmentWorkbench.scopedSkills.length}</strong><small>用于权限与审核治理</small></article>
+              <article className="manage-metric-card"><span>直属下级</span><strong>{departmentWorkbench.childDepartments.length}</strong></article>
+              <article className="manage-metric-card"><span>范围用户</span><strong>{departmentWorkbench.scopedUsers.length}</strong></article>
+              <article className="manage-metric-card"><span>直属管理员</span><strong>{directManagers.length}</strong></article>
+              <article className="manage-metric-card"><span>Skill 数</span><strong>{departmentWorkbench.scopedSkills.length}</strong></article>
             </div>
 
             <div className="manage-subtabs">
@@ -2780,12 +2804,9 @@ function ManageDepartmentsPane({ workspace }: { workspace: P1WorkspaceState }) {
       </section>
       <aside className="stage-panel manage-inspector-panel">
         {!selectedDepartment ? (
-          <SectionEmpty title="选择一个部门查看详情" />
+          <SectionEmpty title="选择一个部门查看详情" body="右侧会展示层级、管理员、治理范围和维护动作。" compact align="start" />
         ) : (
           <>
-            <div className="detail-symbol-panel manage-symbol-panel">
-              <InitialBadge label={selectedDepartment.name} large />
-            </div>
             <div className="detail-block">
               <div className="inspector-kicker">部门详情</div>
               <strong>{selectedDepartment.name}</strong>
@@ -2804,14 +2825,6 @@ function ManageDepartmentsPane({ workspace }: { workspace: P1WorkspaceState }) {
                 {directManagers.map((manager) => (
                   <div className="detail-list-item" key={manager.phoneNumber}>{manager.username} · 管理员 L{manager.adminLevel ?? "?"}</div>
                 ))}
-              </div>
-            </div>
-            <div className="detail-section">
-              <strong>规则提醒</strong>
-              <div className="detail-list">
-                <div className="detail-list-item">可查询本部门及所有后代部门。</div>
-                <div className="detail-list-item">仅可修改、删除后代部门，本部门和上级部门只读。</div>
-                <div className="detail-list-item">删除前必须确保节点为空，且不会移除最后一个管理员。</div>
               </div>
             </div>
             {selectedDepartment.level > 0 ? (
@@ -2925,9 +2938,6 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
       <section className="stage-panel manage-center-panel manage-list-panel">
         <div className="manage-panel-toolbar stack">
           <div className="manage-list-toolbar-row">
-            <div>
-              <div className="eyebrow">用户列表</div>
-            </div>
             <button className="btn btn-primary" type="button" onClick={() => setCreateUserModalOpen(true)}>
               <Plus size={14} />
               新增用户
@@ -3009,12 +3019,9 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
       </section>
       <aside className="stage-panel manage-inspector-panel governance-panel">
         {!selectedUser ? (
-          <SectionEmpty title="选择一个用户进行治理" />
+          <SectionEmpty title="选择一个用户进行治理" body="右侧会集中展示账号状态、部门归属和高风险动作。" compact align="start" />
         ) : (
           <>
-            <div className="detail-symbol-panel manage-symbol-panel">
-              <InitialBadge label={selectedUser.username} large />
-            </div>
             <div className="detail-block">
               <div className="inspector-kicker">账号治理</div>
               <strong>{selectedUser.username}</strong>

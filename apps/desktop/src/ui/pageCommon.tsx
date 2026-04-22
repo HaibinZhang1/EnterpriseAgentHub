@@ -5,7 +5,7 @@ import type { PackageFileContent, PackageFileEntry } from "../domain/p1.ts";
 import type { P1WorkspaceState } from "../state/useP1Workspace.ts";
 import type { DesktopUIState } from "../state/useDesktopUIState.ts";
 import { downloadAuthenticatedFile } from "../services/p1Client.ts";
-import { localize, skillInitials } from "./desktopShared.tsx";
+import { detailBadgeMonogram, localize, skillInitials } from "./desktopShared.tsx";
 import { iconToneForLabel, type IconTone } from "./iconTone.ts";
 
 export interface SectionProps {
@@ -40,9 +40,20 @@ export function AuthGateCard({
   );
 }
 
-export function SectionEmpty({ title, body }: { title: string; body?: string }) {
+export function SectionEmpty({
+  title,
+  body,
+  compact = false,
+  align = "center"
+}: {
+  title: string;
+  body?: string;
+  compact?: boolean;
+  align?: "center" | "start";
+}) {
+  const className = ["empty-state", compact ? "compact" : "", align === "start" ? "align-start" : ""].filter(Boolean).join(" ");
   return (
-    <div className="empty-state">
+    <div className={className}>
       <Search size={18} />
       <strong>{title}</strong>
       {body ? <p>{body}</p> : null}
@@ -73,7 +84,7 @@ export function InitialBadge({
 }) {
   const resolvedTone = tone ?? iconToneForLabel(label);
   const classes = ["initial-badge", large ? "large" : "", `icon-tone-${resolvedTone}`, className].filter(Boolean).join(" ");
-  return <span className={classes}>{skillInitials(label)}</span>;
+  return <span className={classes}>{large ? detailBadgeMonogram(label) : skillInitials(label)}</span>;
 }
 
 export function SelectField({

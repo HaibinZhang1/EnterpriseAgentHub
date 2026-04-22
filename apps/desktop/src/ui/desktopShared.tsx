@@ -45,6 +45,20 @@ export function skillInitials(input: string): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
+export function detailBadgeMonogram(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "S";
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+  }
+  const glyphs = Array.from(trimmed);
+  const firstGlyph = glyphs[0] ?? "S";
+  return /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/u.test(firstGlyph)
+    ? firstGlyph
+    : glyphs.slice(0, 2).join("").toUpperCase();
+}
+
 export function categoryIcon(skill: SkillSummary) {
   if (skill.category.includes("治理") || skill.category.includes("安全")) return <ShieldCheck size={16} />;
   if (skill.category.includes("文档")) return <BookOpenCheck size={16} />;

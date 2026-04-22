@@ -80,7 +80,7 @@ export function presentConfirmWithDrawerDismissal(
 export function deriveTopLevelNavigation(input: {
   isAdminConnected: boolean;
 }): TopLevelSection[] {
-  return input.isAdminConnected ? ["home", "community", "local", "manage"] : ["home", "community", "local"];
+  return input.isAdminConnected ? ["community", "home", "local", "manage"] : ["community", "home", "local"];
 }
 
 export function mapLegacyPageToView(page: PageID): {
@@ -165,7 +165,7 @@ function defaultAppUpdateState(): AppUpdateState {
     latestVersion: "0.1.3",
     summary: "顶栏导航、发布中心覆盖层和本地工作台重建。",
     highlights: [
-      "一级导航收敛为主页、社区、本地、管理",
+      "一级导航收敛为社区、主页、本地、管理",
       "发布中心改为覆盖层工作台",
       "本地工具和项目统一收口到本地页"
     ],
