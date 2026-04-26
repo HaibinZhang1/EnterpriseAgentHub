@@ -18,6 +18,21 @@ export interface LocalEventsResponse {
   remoteNotices: Array<{ skillID?: string; noticeType: NotificationType; message: string }>;
 }
 
+const ISO_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function normalizeISODateTime(value: string | undefined): string | null {
+  if (!value || !ISO_DATE_TIME_PATTERN.test(value)) {
+    return null;
+  }
+
+  const parsedAt = Date.parse(value);
+  if (Number.isNaN(parsedAt)) {
+    return null;
+  }
+
+  return new Date(parsedAt).toISOString();
+}
+
 @Injectable()
 export class DesktopService {
   constructor(
@@ -77,6 +92,35 @@ export class DesktopService {
     for (const event of request.events ?? []) {
       if (!event.eventID || !event.occurredAt || !event.result) {
         rejectedEvents.push({ eventID: event.eventID, code: 'invalid_event', message: 'eventID, occurredAt and result are required' });
+        logWarn({
+          event: 'desktop.local_events.rejected',
+          domain: 'desktop-local-runtime',
+          action: 'accept_local_events',
+          actorID: userID,
+          entityID: request.deviceID,
+          result: 'failed',
+          reason: 'missing_required_event_field',
+          detail: { eventID: event.eventID ?? null }
+        });
+        continue;
+      }
+
+      const occurredAt = normalizeISODateTime(event.occurredAt);
+      if (!occurredAt) {
+        rejectedEvents.push({ eventID: event.eventID, code: 'invalid_event', message: 'occurredAt must be an ISO date-time string' });
+        logWarn({
+          event: 'desktop.local_events.rejected',
+          domain: 'desktop-local-runtime',
+          action: 'accept_local_events',
+          actorID: userID,
+          entityID: request.deviceID,
+          result: 'failed',
+          reason: 'invalid_occurred_at',
+          detail: {
+            eventID: event.eventID,
+            occurredAt: event.occurredAt
+          }
+        });
         continue;
       }
 
@@ -111,7 +155,7 @@ export class DesktopService {
           event.resolvedMode ?? null,
           event.fallbackReason ?? null,
           event.result,
-          event.occurredAt,
+          occurredAt,
         ],
       );
       acceptedEventIDs.push(event.eventID);

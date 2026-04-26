@@ -5,6 +5,7 @@ import type {
   ApiErrorCode,
   ConnectionStatus as SharedConnectionStatus,
   CurrentUser as SharedCurrentUser,
+  ClientUpdateReleaseSummary as SharedClientUpdateReleaseSummary,
   DepartmentNode as SharedDepartmentNode,
   DesktopBootstrapResponse,
   DetailAccess as SharedDetailAccess,
@@ -100,6 +101,7 @@ export interface EnabledTarget extends Omit<SharedEnabledTarget, "fallbackReason
 }
 
 export type DownloadTicket = SharedDownloadTicket;
+export type ClientUpdateReleaseSummary = MutableDeep<SharedClientUpdateReleaseSummary>;
 
 export interface LocalSkillInstall extends Omit<SharedLocalSkillInstall, "enabledTargets" | "sourcePackageHash" | "sourceType"> {
   sourcePackageHash: string;

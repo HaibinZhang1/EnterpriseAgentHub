@@ -79,6 +79,7 @@ export interface ReviewRecord {
   review_type: ReviewType;
   review_status: ReviewStatus;
   workflow_state: WorkflowState;
+  claimed_from_workflow_state: Extract<WorkflowState, "manual_precheck" | "pending_review"> | null;
   risk_level: "low" | "medium" | "high" | "unknown";
   summary: string;
   description: string;

@@ -137,6 +137,7 @@ export class PublishingRepository {
         r.review_type,
         r.review_status,
         r.workflow_state,
+        r.claimed_from_workflow_state,
         r.risk_level,
         r.summary,
         r.description,
@@ -241,6 +242,55 @@ export class PublishingRepository {
       `,
       [`rvh_${randomBytes(8).toString("hex")}`, reviewID, actorID, action, comment]
     );
+  }
+
+  async releaseExpiredReviewLocks(reviewID?: string): Promise<void> {
+    await this.database.transaction(async (client) => {
+      const expired = await client.query<{
+        id: string;
+        claimed_from_workflow_state: 'manual_precheck' | 'pending_review';
+      }>(
+        `
+        SELECT id, claimed_from_workflow_state
+        FROM review_items
+        WHERE workflow_state = 'in_review'
+          AND review_status = 'in_review'
+          AND claimed_from_workflow_state IN ('manual_precheck', 'pending_review')
+          AND (lock_expires_at IS NULL OR lock_expires_at <= now())
+          AND ($1::text IS NULL OR id = $1)
+        FOR UPDATE
+        `,
+        [reviewID ?? null],
+      );
+
+      for (const row of expired.rows) {
+        const updated = await client.query(
+          `
+          UPDATE review_items
+          SET workflow_state = claimed_from_workflow_state,
+              review_status = 'pending',
+              lock_owner_id = NULL,
+              lock_expires_at = NULL,
+              claimed_from_workflow_state = NULL,
+              updated_at = now()
+          WHERE id = $1
+            AND workflow_state = 'in_review'
+          `,
+          [row.id],
+        );
+        if (updated.rowCount === 1) {
+          await this.insertHistory(
+            client,
+            row.id,
+            null,
+            'lock_expired',
+            row.claimed_from_workflow_state === 'manual_precheck'
+              ? '锁单超时，已退回待人工复核队列。'
+              : '锁单超时，已退回待管理员审核队列。',
+          );
+        }
+      }
+    });
   }
 
   async recordJobRun(reviewID: string, status: string): Promise<void> {

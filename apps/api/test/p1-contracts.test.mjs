@@ -12,6 +12,7 @@ const passwordResetMigration = readFileSync(new URL('../src/database/migrations/
 const packageDownloadService = readFileSync(new URL('../src/skills/package-download.service.ts', import.meta.url), 'utf8');
 const packageDownloadController = readFileSync(new URL('../src/skills/package-download.controller.ts', import.meta.url), 'utf8');
 const publishingService = readFileSync(new URL('../src/publishing/publishing-publication.service.ts', import.meta.url), 'utf8');
+const publisherController = readFileSync(new URL('../src/publishing/publisher.controller.ts', import.meta.url), 'utf8');
 const permissionResolver = readFileSync(new URL('../src/auth/permission-resolver.service.ts', import.meta.url), 'utf8');
 const seedPackage = new URL('../src/database/seeds/packages/codex-review-helper/1.2.0/package.zip', import.meta.url);
 const seedPackageHash = `sha256:${createHash('sha256').update(readFileSync(seedPackage)).digest('hex')}`;
@@ -31,6 +32,12 @@ test('P1 API contracts preserve symlink-first copy fallback fields', () => {
   assert.match(sharedContracts, /authChangePassword: "\/auth\/change-password"/);
   assert.match(sharedContracts, /menuPermissions/);
   assert.match(sharedContracts, /Notifications: "notifications"/);
+  assert.match(sharedContracts, /SkillReviewTask: "skill_review_task"/);
+  assert.match(sharedContracts, /SkillReviewProgress: "skill_review_progress"/);
+  assert.match(sharedContracts, /\| "review"/);
+  assert.match(sharedContracts, /\| "publisher_submission"/);
+  assert.match(sharedContracts, /PrecheckOverrideCommentRequired: "precheck_override_comment_required"/);
+  assert.match(sharedContracts, /ReviewLockExpired: "review_lock_expired"/);
   assert.match(sharedContracts, /adminLevel/);
   assert.match(sharedContracts, /adminUserPassword: "\/admin\/users\/:phoneNumber\/password"/);
   assert.match(sharedContracts, /readonly phoneNumber: string/);
@@ -46,6 +53,7 @@ test('authenticated menu permissions include notifications for bootstrap and API
   assert.match(permissionResolver, /const basePermissions: MenuPermission\[] = \[[\s\S]*'notifications'/);
   assert.match(permissionResolver, /const adminBasePermissions: MenuPermission\[] = \[[\s\S]*'notifications'/);
   assert.match(permissionResolver, /return \[\.\.\.adminBasePermissions, \.\.\.adminPermissions\]/);
+  assert.match(publisherController, /@RequireMenuPermission\('publisher'\)/);
 });
 
 test('P1 seed covers full, restricted, and delisted skill scenarios', () => {
@@ -86,4 +94,5 @@ test('PostgreSQL migration includes FTS and local-event idempotency gates', () =
   assert.match(publishingMigration, /ALTER TABLE review_items/);
   assert.match(publishingMigration, /review_item_scope_departments/);
   assert.match(publishingMigration, /workflow_state/);
+  assert.match(readFileSync(new URL('../src/database/migrations/008_publish_review_events.sql', import.meta.url), 'utf8'), /claimed_from_workflow_state/);
 });

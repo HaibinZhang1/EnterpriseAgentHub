@@ -9,6 +9,7 @@ import {
 interface ReviewPolicyRecord {
   review_status: ReviewStatus;
   workflow_state: WorkflowState;
+  claimed_from_workflow_state: Extract<WorkflowState, 'manual_precheck' | 'pending_review'> | null;
   lock_owner_id: string | null;
   lock_expires_at: Date | null;
 }
@@ -24,14 +25,14 @@ export function buildAvailableActions(review: ReviewPolicyRecord, actorUserID: s
   const actions: ReviewAction[] = [];
   const claimedByActor = review.lock_owner_id === actorUserID && isLockActive(review.lock_expires_at);
   const status = effectiveReviewStatus(review);
-  if (status === 'pending') {
+  if (status === 'pending' && (review.workflow_state === 'manual_precheck' || review.workflow_state === 'pending_review')) {
     actions.push('claim');
   }
-  if (claimedByActor) {
-    if (review.workflow_state === 'manual_precheck') {
+  if (claimedByActor && review.workflow_state === 'in_review') {
+    if (review.claimed_from_workflow_state === 'manual_precheck') {
       actions.push('pass_precheck', 'return_for_changes', 'reject');
     }
-    if (review.workflow_state === 'pending_review') {
+    if (review.claimed_from_workflow_state === 'pending_review') {
       actions.push('approve', 'return_for_changes', 'reject');
     }
   }

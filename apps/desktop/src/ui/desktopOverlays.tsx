@@ -1526,6 +1526,12 @@ function reviewActionButtonClass(action: ReviewAction) {
   return action === "approve" || action === "pass_precheck" || action === "claim" ? "btn btn-primary btn-small" : "btn btn-small";
 }
 
+const blockingPrecheckIDs = new Set(["skill-md", "semver", "version-order", "size", "file-count", "visibility", "scope"]);
+
+function isBlockingPrecheckWarning(item: ReviewDetail["precheckResults"][number]) {
+  return item.status === "warn" && blockingPrecheckIDs.has(item.id);
+}
+
 function ReviewDetailOverlay({ workspace, ui, overlay }: { workspace: P1WorkspaceState; ui: DesktopUIState; overlay: OverlayState }) {
   if (overlay.kind !== "review_detail") return null;
   return <ReviewDetailOverlayContent workspace={workspace} ui={ui} reviewID={overlay.reviewID} />;
@@ -1595,6 +1601,7 @@ function ReviewDetailOverlayContent({ workspace, ui, reviewID }: { workspace: P1
   const reviewActions = selectedReview.availableActions.filter((action) => action !== "withdraw");
   const changeItems = reviewChangeSections(selectedReview, ui.language);
   const warningPrechecks = selectedReview.precheckResults.filter((item) => item.status === "warn");
+  const blockingPrechecks = selectedReview.precheckResults.filter(isBlockingPrecheckWarning);
   const reviewSummary = selectedReview.reviewSummary ?? selectedReview.summary ?? "暂无审核摘要。";
 
   return (
@@ -1668,6 +1675,15 @@ function ReviewDetailOverlayContent({ workspace, ui, reviewID }: { workspace: P1
               onChange={(event) => setReviewComment(event.target.value)}
             />
           </label>
+          {blockingPrechecks.length > 0 ? (
+            <div className="callout warning">
+              <AlertTriangle size={16} />
+              <span>
+                <strong>存在阻塞型预检查警告</strong>
+                <small>如需通过初审或同意发布，必须填写审核意见，系统会将该意见记录为风险覆盖理由。</small>
+              </span>
+            </div>
+          ) : null}
           <div className="inline-actions wrap">
             {reviewActions.length === 0 ? <span className="muted-copy">当前状态没有可执行审核动作。</span> : null}
             {reviewActions.map((action) => (

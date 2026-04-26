@@ -252,6 +252,12 @@ fn marks_offline_events_synced_and_excludes_them_from_restore() {
         .map(|event| event.event_id.clone())
         .collect::<Vec<_>>();
     assert_eq!(event_ids.len(), 1);
+    assert!(
+        bootstrap.offline_events[0]
+            .occurred_at
+            .starts_with("p1-local-"),
+        "local event timestamps are normalized by the desktop sync client before upload"
+    );
 
     let ack = state
         .mark_offline_events_synced(event_ids.clone())

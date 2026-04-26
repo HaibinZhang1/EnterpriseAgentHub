@@ -1,4 +1,6 @@
 import { requestJSON, resolveAPIURL, routePath } from "./core.ts";
+import { P1_API_ROUTES } from "@enterprise-agent-hub/shared-contracts";
+import type { ClientUpdateReleaseSummary } from "../../domain/p1.ts";
 
 export const CLIENT_UPDATE_ROUTES = {
   check: "/client-updates/check",
@@ -57,6 +59,11 @@ export interface ClientUpdateEventInput {
   fromVersion: string;
   toVersion?: string | null;
   errorCode?: string | null;
+}
+
+export interface PushAdminClientUpdateExeInput {
+  file: File;
+  version: string;
 }
 
 type RawClientUpdateCheckResponse = Partial<
@@ -135,7 +142,67 @@ export function normalizeClientUpdateCheckResponse(
 }
 
 export function createClientUpdatesClient() {
+  async function listAdminClientUpdateReleases(): Promise<ClientUpdateReleaseSummary[]> {
+    return requestJSON<ClientUpdateReleaseSummary[]>(P1_API_ROUTES.adminClientUpdateReleases);
+  }
+
   return {
+    listAdminClientUpdateReleases,
+
+    async pushAdminClientUpdateExe(input: PushAdminClientUpdateExeInput): Promise<ClientUpdateReleaseSummary> {
+      const version = input.version.trim();
+      const existingDraft = (await listAdminClientUpdateReleases()).find(
+        (release) =>
+          release.version === version &&
+          release.platform === "windows" &&
+          release.arch === "x64" &&
+          release.channel === "stable" &&
+          release.status === "draft"
+      );
+      const release =
+        existingDraft ??
+        (await requestJSON<ClientUpdateReleaseSummary>(P1_API_ROUTES.adminClientUpdateReleases, {
+          method: "POST",
+          body: JSON.stringify({
+            version,
+            platform: "windows",
+            arch: "x64",
+            channel: "stable",
+            mandatory: false,
+            rolloutPercent: 100,
+            releaseNotes: `客户端更新 ${version}`
+          })
+        }));
+      const artifactForm = new FormData();
+      artifactForm.append("packageName", input.file.name);
+      artifactForm.append("signatureStatus", "unknown");
+      artifactForm.append("file", input.file, input.file.name);
+      await requestJSON<ClientUpdateReleaseSummary>(
+        routePath(P1_API_ROUTES.adminClientUpdateArtifact, { releaseID: release.releaseID }),
+        {
+          method: "POST",
+          body: artifactForm,
+          timeoutMs: 300_000
+        }
+      );
+      return requestJSON<ClientUpdateReleaseSummary>(
+        routePath(P1_API_ROUTES.adminClientUpdatePublish, { releaseID: release.releaseID }),
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mandatory: false,
+            rolloutPercent: 100
+          })
+        }
+      );
+    },
+
+    async pauseAdminClientUpdateRelease(releaseID: string): Promise<ClientUpdateReleaseSummary> {
+      return requestJSON<ClientUpdateReleaseSummary>(routePath(P1_API_ROUTES.adminClientUpdatePause, { releaseID }), {
+        method: "POST"
+      });
+    },
+
     async checkClientUpdate(input: ClientUpdateCheckInput): Promise<ClientUpdateCheckResponse> {
       const rawResponse = await requestJSON<RawClientUpdateCheckResponse>(CLIENT_UPDATE_ROUTES.check, {
         method: "POST",

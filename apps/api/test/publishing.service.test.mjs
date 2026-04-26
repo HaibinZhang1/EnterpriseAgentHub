@@ -7,6 +7,7 @@ require("ts-node/register/transpile-only");
 
 const { BadRequestException, ForbiddenException } = require("@nestjs/common");
 const { PublishingPublicationService } = require("../src/publishing/publishing-publication.service.ts");
+const { PublishingRepository } = require("../src/publishing/publishing.repository.ts");
 const { PublishingSubmissionService } = require("../src/publishing/publishing-submission.service.ts");
 const { PublishingReviewService } = require("../src/publishing/publishing-review.service.ts");
 const { PublishingPrecheckService } = require("../src/publishing/publishing-precheck.service.ts");
@@ -16,6 +17,12 @@ const {
   parseSimpleFrontmatter
 } = require("../src/publishing/publishing.utils.ts");
 const { parseSubmissionInput } = require("../src/publishing/publishing-submission-input.ts");
+
+const noopNotifications = {
+  async notifySubmissionCreated() {},
+  async notifyAuthorWorkflow() {},
+  async notifyReviewTask() {}
+};
 
 function createServices({
   database = {
@@ -43,6 +50,7 @@ function createServices({
     async loadReview() {
       throw new Error("unexpected loadReview");
     },
+    async releaseExpiredReviewLocks() {},
     async loadHistory() {
       return [];
     },
@@ -78,14 +86,16 @@ function createServices({
     packageBucket() {
       return "skill-packages";
     }
-  }
+  },
+  notifications = noopNotifications
 } = {}) {
   return {
     submissionService: new PublishingSubmissionService(
       database,
       publishingRepository,
       reviewerRouting,
-      packageStorage
+      packageStorage,
+      notifications
     ),
     reviewService: new PublishingReviewService(
       database,
@@ -94,7 +104,8 @@ function createServices({
       {
         async publishSubmission() {},
         async finalizeReview() {},
-      }
+      },
+      notifications
     )
   };
 }
@@ -116,6 +127,7 @@ function createReviewService({
     async loadReview() {
       throw new Error("unexpected loadReview");
     },
+    async releaseExpiredReviewLocks() {},
     async insertHistory() {}
   },
   reviewerRouting = {
@@ -130,13 +142,15 @@ function createReviewService({
   publication = {
     async publishSubmission() {},
     async finalizeReview() {}
-  }
+  },
+  notifications = noopNotifications
 } = {}) {
   return new PublishingReviewService(
     database,
     publishingRepository,
     reviewerRouting,
-    publication
+    publication,
+    notifications
   );
 }
 
@@ -205,6 +219,7 @@ test("PublishingPrecheckService keeps auto-approved reviews pending until publis
         throw new Error("permission_change should not read package");
       }
     },
+    noopNotifications,
     {
       async publishSubmission(review, actor, comment) {
         published.push({ review, actor, comment });
@@ -455,7 +470,8 @@ test("PublishingPublicationService republishes archived skills back to published
       packageBucket() {
         return "skill-packages";
       }
-    }
+    },
+    noopNotifications
   );
 
   await publicationService.publishSubmission(
@@ -542,6 +558,7 @@ test("PublishingSubmissionService only lets authors withdraw submissions that ar
           lock_expires_at: null,
         };
       },
+      async releaseExpiredReviewLocks() {},
       async insertHistory(_client, reviewID, actorID, action, comment) {
         history.push({ reviewID, actorID, action, comment });
       }
@@ -580,7 +597,8 @@ test("PublishingSubmissionService blocks withdraw when the submission is no long
           lock_owner_id: "u_reviewer",
           lock_expires_at: new Date(Date.now() + 60_000).toISOString(),
         };
-      }
+      },
+      async releaseExpiredReviewLocks() {}
     },
     reviewerRouting: {
       canSubmitterWithdraw() {
@@ -606,9 +624,104 @@ test("PublishingSubmissionService blocks withdraw when the submission is no long
   );
 });
 
+test("PublishingRepository releaseExpiredReviewLocks restores the claimed source workflow and records history", async () => {
+  const queries = [];
+  const repository = new PublishingRepository({
+    async transaction(callback) {
+      return callback({
+        async query(text, values = []) {
+          queries.push({ text, values });
+          if (/SELECT id, claimed_from_workflow_state/.test(text)) {
+            return {
+              rows: [{ id: "rv_expired", claimed_from_workflow_state: "pending_review" }]
+            };
+          }
+          return { rowCount: 1, rows: [] };
+        }
+      });
+    }
+  });
+
+  await repository.releaseExpiredReviewLocks("rv_expired");
+
+  const update = queries.find(({ text }) => /UPDATE review_items/.test(text));
+  const history = queries.find(({ text }) => /INSERT INTO review_item_history/.test(text));
+  assert.ok(update);
+  assert.match(update.text, /workflow_state = claimed_from_workflow_state/);
+  assert.match(update.text, /claimed_from_workflow_state = NULL/);
+  assert.ok(history);
+  assert.equal(history.values[3], "lock_expired");
+});
+
+test("PublishingReviewService claimReview moves the lifecycle into in_review and remembers the source state", async () => {
+  const updates = [];
+  const history = [];
+  const notifications = [];
+  const service = createReviewService({
+    database: {
+      async transaction(callback) {
+        return callback({
+          async query(text, values = []) {
+            updates.push({ text, values });
+            return { rowCount: 1, rows: [] };
+          }
+        });
+      }
+    },
+    publishingRepository: {
+      async releaseExpiredReviewLocks(reviewID) {
+        assert.equal(reviewID, "rv_001");
+      },
+      async loadActor() {
+        return { userID: "u_reviewer", displayName: "审核员", role: "admin", adminLevel: 2 };
+      },
+      async loadReview() {
+        return {
+          review_id: "rv_001",
+          skill_id: "prompt-guardrails",
+          skill_display_name: "提示词护栏模板",
+          submitter_id: "u_author",
+          workflow_state: "pending_review",
+          review_status: "pending",
+          lock_owner_id: null,
+          lock_expires_at: null
+        };
+      },
+      async insertHistory(_client, reviewID, actorID, action, comment) {
+        history.push({ reviewID, actorID, action, comment });
+      }
+    },
+    reviewerRouting: {
+      async canActorReview() {
+        return true;
+      },
+      assertClaimedReview() {},
+      async shouldAutoApprove() {
+        return false;
+      }
+    },
+    notifications: {
+      async notifyAuthorWorkflow(_client, review, input) {
+        notifications.push({ review, input });
+      },
+      async notifySubmissionCreated() {},
+      async notifyReviewTask() {}
+    }
+  });
+
+  const actorUserID = await service.claimReview("u_reviewer", "rv_001");
+
+  assert.equal(actorUserID, "u_reviewer");
+  assert.match(updates[0].text, /claimed_from_workflow_state = workflow_state/);
+  assert.match(updates[0].text, /workflow_state = 'in_review'/);
+  assert.equal(history[0].action, "claimed");
+  assert.equal(notifications[0].review.review_id, "rv_001");
+});
+
 test("PublishingReviewService passPrecheck moves review into pending_review when auto-approve is false", async () => {
   const updates = [];
   const history = [];
+  const notifications = [];
   const service = createReviewService({
     database: {
       async transaction(callback) {
@@ -627,10 +740,13 @@ test("PublishingReviewService passPrecheck moves review into pending_review when
       async loadReview() {
         return {
           review_id: "rv_001",
-          workflow_state: "manual_precheck",
+          workflow_state: "in_review",
+          claimed_from_workflow_state: "manual_precheck",
           submitter_id: "u_author",
           submitter_role: "normal_user",
-          submitter_admin_level: null
+          submitter_admin_level: null,
+          lock_owner_id: "u_reviewer",
+          lock_expires_at: new Date(Date.now() + 60_000)
         };
       },
       async insertHistory(_client, reviewID, actorID, action, comment) {
@@ -644,16 +760,29 @@ test("PublishingReviewService passPrecheck moves review into pending_review when
       },
       async shouldAutoApprove() {
         return false;
+      },
+      async eligibleReviewerIDsFor() {
+        return ["u_admin_nearest"];
       }
+    },
+    notifications: {
+      async notifyAuthorWorkflow(_client, review, input) {
+        notifications.push({ kind: "author", review, input });
+      },
+      async notifyReviewTask(_client, review, reviewerIDs, summary) {
+        notifications.push({ kind: "task", review, reviewerIDs, summary });
+      },
+      async notifySubmissionCreated() {}
     }
   });
   const actorUserID = await service.passPrecheck("u_reviewer", "rv_001", "人工复核通过");
   assert.equal(actorUserID, "u_reviewer");
   assert.match(updates[0].text, /UPDATE review_items/);
   assert.equal(history[0].action, "pass_precheck");
+  assert.deepEqual(notifications.map((notice) => notice.kind), ["author", "task"]);
 });
 
-test("PublishingReviewService blocks passPrecheck when mandatory package checks failed", async () => {
+test("PublishingReviewService requires a comment before overriding blocking precheck failures", async () => {
   const service = createReviewService({
     publishingRepository: {
       async loadActor() {
@@ -662,7 +791,8 @@ test("PublishingReviewService blocks passPrecheck when mandatory package checks 
       async loadReview() {
         return {
           review_id: "rv_blocked",
-          workflow_state: "manual_precheck",
+          workflow_state: "in_review",
+          claimed_from_workflow_state: "manual_precheck",
           submitter_id: "u_author",
           submitter_role: "normal_user",
           submitter_admin_level: null,
@@ -694,11 +824,127 @@ test("PublishingReviewService blocks passPrecheck when mandatory package checks 
   });
 
   await assert.rejects(
-    () => service.passPrecheck("u_reviewer", "rv_blocked", "仍然通过"),
+    () => service.passPrecheck("u_reviewer", "rv_blocked", ""),
     (error) => {
       assert.ok(error instanceof BadRequestException);
-      assert.equal(error.message, "validation_failed");
+      assert.equal(error.message, "precheck_override_comment_required");
       return true;
     },
   );
+});
+
+test("PublishingReviewService records an override before allowing blocking precheck failures", async () => {
+  const history = [];
+  const service = createReviewService({
+    publishingRepository: {
+      async loadActor() {
+        return { userID: "u_reviewer", role: "admin", adminLevel: 2 };
+      },
+      async loadReview() {
+        return {
+          review_id: "rv_blocked",
+          skill_display_name: "提示词护栏模板",
+          workflow_state: "in_review",
+          claimed_from_workflow_state: "manual_precheck",
+          submitter_id: "u_author",
+          submitter_role: "normal_user",
+          submitter_admin_level: null,
+          lock_owner_id: "u_reviewer",
+          lock_expires_at: new Date(Date.now() + 60_000),
+          precheck_results: [
+            {
+              id: "skill-md",
+              label: "存在 SKILL.md",
+              status: "warn",
+              message: "缺少 SKILL.md，需人工复核。",
+            },
+          ],
+        };
+      },
+      async insertHistory(_client, reviewID, actorID, action, comment) {
+        history.push({ reviewID, actorID, action, comment });
+      },
+    },
+    reviewerRouting: {
+      assertClaimedReview() {},
+      async canActorReview() {
+        return true;
+      },
+      async shouldAutoApprove() {
+        return false;
+      },
+      async eligibleReviewerIDsFor() {
+        return ["u_admin_nearest"];
+      },
+    },
+  });
+
+  await service.passPrecheck("u_reviewer", "rv_blocked", "确认风险，允许覆盖。");
+
+  assert.deepEqual(
+    history.map((item) => item.action),
+    ["override_precheck", "pass_precheck"],
+  );
+});
+
+test("PublishingReviewService applies the same precheck override rule to final approval", async () => {
+  const published = [];
+  const service = createReviewService({
+    publishingRepository: {
+      async loadActor() {
+        return { userID: "u_reviewer", role: "admin", adminLevel: 2 };
+      },
+      async loadReview() {
+        return {
+          review_id: "rv_approve_blocked",
+          workflow_state: "in_review",
+          claimed_from_workflow_state: "pending_review",
+          submitter_id: "u_author",
+          lock_owner_id: "u_reviewer",
+          lock_expires_at: new Date(Date.now() + 60_000),
+          precheck_results: [
+            {
+              id: "semver",
+              label: "版本号合法",
+              status: "warn",
+              message: "版本号不符合规范。",
+            },
+          ],
+        };
+      },
+      async insertHistory() {}
+    },
+    reviewerRouting: {
+      assertClaimedReview() {},
+      async canActorReview() {
+        return true;
+      },
+      async shouldAutoApprove() {
+        return false;
+      }
+    },
+    publication: {
+      async publishSubmission(review, actor, comment, options) {
+        published.push({ review, actor, comment, options });
+      },
+      async finalizeReview() {}
+    }
+  });
+
+  await assert.rejects(
+    () => service.approveReview("u_reviewer", "rv_approve_blocked", ""),
+    (error) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.equal(error.message, "precheck_override_comment_required");
+      return true;
+    },
+  );
+
+  await service.approveReview("u_reviewer", "rv_approve_blocked", "确认版本风险，允许发布。");
+
+  assert.equal(published.length, 1);
+  assert.deepEqual(published[0].options.preHistory, {
+    action: "override_precheck",
+    comment: "确认版本风险，允许发布。",
+  });
 });

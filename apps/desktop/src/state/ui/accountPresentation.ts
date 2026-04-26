@@ -1,7 +1,7 @@
 import type { P1WorkspaceState } from "../useP1Workspace.ts";
 
 type DisplayLanguage = "zh-CN" | "en-US";
-export type AccountPresenceTone = "connected" | "offline";
+export type AccountPresenceTone = "connected" | "failed" | "offline";
 
 export interface AccountPresentation {
   buttonLabel: string;
@@ -20,10 +20,17 @@ export function deriveAccountPresentation(input: {
   language?: DisplayLanguage;
 }): AccountPresentation {
   const language = input.language ?? "zh-CN";
-  const connectionTone: AccountPresenceTone = input.loggedIn && input.connectionStatus === "connected" ? "connected" : "offline";
+  const connectionTone: AccountPresenceTone =
+    input.loggedIn && input.connectionStatus === "connected"
+      ? "connected"
+      : input.loggedIn && input.connectionStatus === "failed"
+        ? "failed"
+        : "offline";
   const connectionLabel =
     input.loggedIn && input.connectionStatus === "connected"
       ? localize(language, "已连接", "Connected")
+      : input.loggedIn && input.connectionStatus === "failed"
+        ? localize(language, "服务异常", "Service issue")
       : input.loggedIn
         ? localize(language, "离线", "Offline")
         : localize(language, "本地", "Local");

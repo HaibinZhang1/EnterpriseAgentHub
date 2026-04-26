@@ -4,6 +4,7 @@ import type {
   AdminSkill,
   AdminUser,
   AuthState,
+  ClientUpdateReleaseSummary,
   DepartmentNode,
   PageID,
   ReviewDetail,
@@ -19,6 +20,7 @@ export function useWorkspaceAdminReviewState() {
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [adminSkills, setAdminSkills] = useState<AdminSkill[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [clientUpdateReleases, setClientUpdateReleases] = useState<ClientUpdateReleaseSummary[]>([]);
   const [selectedReviewID, setSelectedReviewID] = useState<string | null>(null);
   const [selectedReview, setSelectedReview] = useState<ReviewDetail | null>(null);
 
@@ -27,6 +29,7 @@ export function useWorkspaceAdminReviewState() {
     setAdminUsers([]);
     setAdminSkills([]);
     setReviews([]);
+    setClientUpdateReleases([]);
     setSelectedReview(null);
     setSelectedReviewID(null);
     setSelectedDepartmentID(null);
@@ -35,6 +38,7 @@ export function useWorkspaceAdminReviewState() {
   return {
     adminSkills,
     adminUsers,
+    clientUpdateReleases,
     departments,
     resetAdminReviewState,
     reviews,
@@ -44,6 +48,7 @@ export function useWorkspaceAdminReviewState() {
     setAdminSkills,
     setAdminUsers,
     setDepartments,
+    setClientUpdateReleases,
     setReviews,
     setSelectedDepartmentID,
     setSelectedReview,
@@ -59,6 +64,7 @@ export function useWorkspaceAdminReviewActions(input: {
   selectedReviewID: string | null;
   setAdminSkills: Dispatch<SetStateAction<AdminSkill[]>>;
   setAdminUsers: Dispatch<SetStateAction<AdminUser[]>>;
+  setClientUpdateReleases: Dispatch<SetStateAction<ClientUpdateReleaseSummary[]>>;
   setDepartments: Dispatch<SetStateAction<DepartmentNode[]>>;
   setReviews: Dispatch<SetStateAction<ReviewItem[]>>;
   setSelectedDepartmentID: Dispatch<SetStateAction<string | null>>;
@@ -73,6 +79,7 @@ export function useWorkspaceAdminReviewActions(input: {
     selectedReviewID,
     setAdminSkills,
     setAdminUsers,
+    setClientUpdateReleases,
     setDepartments,
     setReviews,
     setSelectedDepartmentID,
@@ -97,6 +104,10 @@ export function useWorkspaceAdminReviewActions(input: {
     setReviews(nextReviews);
     setSelectedReviewID((current) => (nextReviews.some((review) => review.reviewID === current) ? current : nextReviews[0]?.reviewID ?? null));
   }, [setReviews, setSelectedReviewID]);
+
+  const refreshClientUpdateReleases = useCallback(async () => {
+    setClientUpdateReleases(await p1Client.listAdminClientUpdateReleases());
+  }, [setClientUpdateReleases]);
 
   useEffect(() => {
     if (authState !== "authenticated" || activePage !== "review" || !selectedReviewID) return;
@@ -220,6 +231,40 @@ export function useWorkspaceAdminReviewActions(input: {
     [requireAuthenticatedAction, setAdminSkills]
   );
 
+  const pushClientUpdateExe = useCallback(
+    async (input: { file: File; version: string }) => {
+      if (authState !== "authenticated") {
+        requireAuthenticatedAction(null, async () => {});
+        return;
+      }
+      try {
+        await p1Client.pushAdminClientUpdateExe(input);
+        await refreshClientUpdateReleases();
+      } catch (error) {
+        await handleRemoteError(error, { reopenLogin: true });
+        throw error;
+      }
+    },
+    [authState, handleRemoteError, refreshClientUpdateReleases, requireAuthenticatedAction]
+  );
+
+  const pauseClientUpdateRelease = useCallback(
+    async (releaseID: string) => {
+      if (authState !== "authenticated") {
+        requireAuthenticatedAction(null, async () => {});
+        return;
+      }
+      try {
+        await p1Client.pauseAdminClientUpdateRelease(releaseID);
+        await refreshClientUpdateReleases();
+      } catch (error) {
+        await handleRemoteError(error, { reopenLogin: true });
+        throw error;
+      }
+    },
+    [authState, handleRemoteError, refreshClientUpdateReleases, requireAuthenticatedAction]
+  );
+
   const claimReview = useCallback(
     async (reviewID: string) => {
       requireAuthenticatedAction("review", async () => {
@@ -302,6 +347,9 @@ export function useWorkspaceAdminReviewActions(input: {
     getReviewFileContent,
     listReviewFiles,
     passPrecheck,
+    pauseClientUpdateRelease,
+    pushClientUpdateExe,
+    refreshClientUpdateReleases,
     refreshManageData,
     refreshReviews,
     rejectReview,

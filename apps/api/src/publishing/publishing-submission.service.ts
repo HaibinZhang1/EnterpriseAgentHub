@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { assertSkillStatusTransition } from '../admin/skill-status';
 import { DatabaseService } from '../database/database.service';
 import { PackageStorageService } from './package-storage.service';
+import { PublishingNotificationService } from './publishing-notification.service';
 import { PublishingRepository } from './publishing.repository';
 import { buildSubmissionSummary, parseSubmissionInput } from './publishing-submission-input';
 import { ReviewerRoutingService } from './reviewer-routing.service';
@@ -21,6 +22,7 @@ export class PublishingSubmissionService {
     private readonly publishingRepository: PublishingRepository,
     private readonly reviewerRouting: ReviewerRoutingService,
     private readonly packageStorage: PackageStorageService,
+    private readonly notifications: PublishingNotificationService,
   ) {}
 
   async createSubmission(
@@ -33,7 +35,7 @@ export class PublishingSubmissionService {
     const currentSkill = await this.publishingRepository.loadSkillByID(input.skillID);
 
     if (input.submissionType === 'publish' && currentSkill && currentSkill.status !== 'archived') {
-      throw new BadRequestException('validation_failed');
+      throw new BadRequestException('skill_id_exists');
     }
     if (input.submissionType !== 'publish') {
       if (!currentSkill) {
@@ -147,12 +149,18 @@ export class PublishingSubmissionService {
         `,
         [`rvh_${randomBytes(8).toString('hex')}`, reviewID, actor.userID, buildSubmissionSummary(input)],
       );
+      await this.notifications.notifySubmissionCreated(client, {
+        review_id: reviewID,
+        skill_display_name: input.displayName,
+        submitter_id: actor.userID,
+      });
     });
 
     return { actorUserID: actor.userID, reviewID };
   }
 
   async withdrawSubmission(userID: string, submissionID: string): Promise<{ actorUserID: string; submissionID: string }> {
+    await this.publishingRepository.releaseExpiredReviewLocks(submissionID);
     const actor = await this.publishingRepository.loadActor(userID);
     const review = await this.publishingRepository.loadReview(submissionID);
     if (review.submitter_id !== actor.userID || !this.reviewerRouting.canSubmitterWithdraw(actor.userID, review)) {
@@ -168,12 +176,17 @@ export class PublishingSubmissionService {
             decision = 'withdraw',
             lock_owner_id = NULL,
             lock_expires_at = NULL,
+            claimed_from_workflow_state = NULL,
             updated_at = now()
         WHERE id = $1
         `,
         [submissionID],
       );
       await this.publishingRepository.insertHistory(client, submissionID, actor.userID, 'withdrawn', '发布者已撤回提交。');
+      await this.notifications.notifyAuthorWorkflow(client, review, {
+        title: `${review.skill_display_name} 已撤回`,
+        summary: '发布者已撤回提交。',
+      });
     });
 
     return { actorUserID: actor.userID, submissionID };

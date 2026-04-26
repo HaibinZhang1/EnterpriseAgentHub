@@ -42,7 +42,7 @@ export { collectInstalledSkillIssues } from "./ui/installedSkillSelectors.ts";
 export type TopLevelSection = "home" | "community" | "local" | "manage";
 export type CommunityPane = "skills" | "mcp" | "plugins" | "publish" | "mine";
 export type LocalPane = "skills" | "tools" | "projects";
-export type ManagePane = "reviews" | "skills" | "departments" | "users";
+export type ManagePane = "reviews" | "skills" | "departments" | "users" | "client_updates";
 export type PublisherPane = "compose" | "mine";
 
 export type OverlayState =
@@ -96,6 +96,10 @@ export function deriveTopLevelNavigation(input: {
   isAdminConnected: boolean;
 }): TopLevelSection[] {
   return input.isAdminConnected ? ["community", "home", "local", "manage"] : ["community", "home", "local"];
+}
+
+export function canAccessClientUpdateManagement(input: { adminLevel?: number | null }): boolean {
+  return input.adminLevel === 1;
 }
 
 export function mapLegacyPageToView(page: PageID): {
@@ -153,6 +157,8 @@ export function legacyPageForView(input: {
         case "departments":
           return "admin_departments";
         case "users":
+          return "admin_users";
+        case "client_updates":
           return "admin_users";
       }
     case "home":
@@ -636,9 +642,10 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
 
     if (action.kind === "review") {
       if (action.reviewID) {
-        workspace.adminData.setSelectedReviewID(action.reviewID);
+        openReviewDetail(action.reviewID);
+      } else {
+        openManagePane("reviews");
       }
-      openManagePane("reviews");
       await readPromise;
       return;
     }
@@ -671,6 +678,7 @@ export function useDesktopUIState(workspace: P1WorkspaceState) {
     openCommunityPane,
     openLocalPane,
     openManagePane,
+    openReviewDetail,
     openSkillDetail,
     workspace
   ]);

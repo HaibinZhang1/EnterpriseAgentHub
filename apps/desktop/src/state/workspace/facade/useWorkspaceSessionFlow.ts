@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { LocalBootstrap, PageID, SkillSummary } from "../../../domain/p1";
-import { isApiError, isPermissionError, isUnauthenticatedError, p1Client } from "../../../services/p1Client";
+import { isConnectionUnavailableError, isPermissionError, isServerUnavailableError, isUnauthenticatedError, p1Client } from "../../../services/p1Client";
 import { hydrateAuthenticatedWorkspace, moveWorkspaceToGuest } from "./useWorkspaceBootstrap";
 import type { HandleRemoteError, RequireAuthenticatedAction } from "../workspaceTypes";
 
@@ -105,7 +105,7 @@ export function useWorkspaceSessionFlow(input: {
         return true;
       }
       const message = error instanceof Error ? error.message : "请求失败";
-      if (isApiError(error) && (error.status === 0 || error.code === "server_unavailable")) {
+      if (isConnectionUnavailableError(error)) {
         auth.setBootstrap((current: any) => ({
           ...current,
           connection: {
@@ -115,6 +115,18 @@ export function useWorkspaceSessionFlow(input: {
           }
         }));
         market.setProgress({ operation: "request", skillID: "offline", stage: "离线模式", result: "failed", message });
+        return true;
+      }
+      if (isServerUnavailableError(error)) {
+        auth.setBootstrap((current: any) => ({
+          ...current,
+          connection: {
+            ...current.connection,
+            status: "failed",
+            lastError: message
+          }
+        }));
+        market.setProgress({ operation: "request", skillID: "server", stage: "服务异常", result: "failed", message });
         return true;
       }
       market.setProgress({ operation: "request", skillID: "request", stage: "请求失败", result: "failed", message });

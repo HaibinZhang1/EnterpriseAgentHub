@@ -13,7 +13,7 @@ import { PublishingService } from './publishing.service';
 
 @Controller('publisher')
 @UseGuards(P1AuthGuard, MenuPermissionGuard)
-@RequireMenuPermission('my_installed')
+@RequireMenuPermission('publisher')
 export class PublisherController {
   constructor(private readonly publishingService: PublishingService) {}
 

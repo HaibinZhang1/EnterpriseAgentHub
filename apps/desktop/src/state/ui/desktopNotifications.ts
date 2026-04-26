@@ -17,6 +17,9 @@ export interface DesktopNotificationItem {
   occurredAt: string;
   unread: boolean;
   relatedSkillID: string | null;
+  objectType: LocalNotification["objectType"] | null;
+  objectID: string | null;
+  action: string | null;
   rawNotificationID: string | null;
   rawType: string | null;
   source: LocalNotification["source"] | "app_update";
@@ -81,6 +84,9 @@ function notificationText(notification: Pick<LocalNotification, "title" | "summa
 }
 
 function isReviewProgressNotification(notification: LocalNotification) {
+  if (notification.objectType === "review" || notification.objectType === "publisher_submission") {
+    return true;
+  }
   const type = String(notification.type).toLocaleLowerCase();
   if (REVIEW_TYPE_KEYWORDS.some((keyword) => type.includes(keyword))) {
     return true;
@@ -95,6 +101,12 @@ function isAdminReviewTask(notification: DesktopNotificationItem) {
 function matchReferenceID(input: string, pattern: RegExp) {
   const match = input.match(pattern);
   return match?.[0] ?? null;
+}
+
+function matchActionID(action: string | null | undefined, prefix: "/admin/reviews/" | "/publisher/submissions/") {
+  if (!action?.startsWith(prefix)) return null;
+  const [id] = action.slice(prefix.length).split(/[?#]/);
+  return id ? decodeURIComponent(id) : null;
 }
 
 function appUpdateTitle(appUpdate: AppUpdateState): string {
@@ -126,6 +138,9 @@ function createAppUpdateNotification(
     occurredAt: serverNotice?.occurredAt ?? appUpdate.occurredAt,
     unread: appUpdate.unread,
     relatedSkillID: null,
+    objectType: "client_update",
+    objectID: appUpdate.releaseID,
+    action: null,
     rawNotificationID: serverNotice?.notificationID ?? null,
     rawType: serverNotice ? String(serverNotice.status) : "app_update",
     source: serverNotice?.source ?? "app_update",
@@ -144,6 +159,9 @@ function mapRawNotification(notification: LocalNotification): DesktopNotificatio
       occurredAt: notification.occurredAt,
       unread: notification.unread,
       relatedSkillID: notification.relatedSkillID,
+      objectType: notification.objectType ?? null,
+      objectID: notification.objectID ?? null,
+      action: notification.action ?? null,
       rawNotificationID: notification.notificationID,
       rawType: String(notification.type),
       source: notification.source,
@@ -164,6 +182,9 @@ function mapRawNotification(notification: LocalNotification): DesktopNotificatio
     occurredAt: notification.occurredAt,
     unread: notification.unread,
     relatedSkillID: notification.relatedSkillID,
+    objectType: notification.objectType ?? null,
+    objectID: notification.objectID ?? null,
+    action: notification.action ?? null,
     rawNotificationID: notification.notificationID,
     rawType: String(notification.type),
     source: notification.source,
@@ -213,6 +234,30 @@ export function resolveDesktopNotificationAction(
 
   if (notification.kind === "app_update") {
     return { kind: "app_update" };
+  }
+
+  if (notification.objectType === "review") {
+    const reviewID = notification.objectID ?? matchActionID(notification.action, "/admin/reviews/");
+    const matchedReview =
+      lookup.reviews.find((review) => review.reviewID === reviewID) ??
+      lookup.reviews.find((review) => review.skillID === notification.relatedSkillID);
+    return {
+      kind: "review",
+      reviewID: matchedReview?.reviewID ?? reviewID,
+      skillID: matchedReview?.skillID ?? notification.relatedSkillID
+    };
+  }
+
+  if (notification.objectType === "publisher_submission") {
+    const submissionID = notification.objectID ?? matchActionID(notification.action, "/publisher/submissions/");
+    const matchedSubmission =
+      lookup.publisherSubmissions.find((submission) => submission.submissionID === submissionID) ??
+      lookup.publisherSubmissions.find((submission) => submission.skillID === notification.relatedSkillID);
+    return {
+      kind: "publisher",
+      submissionID: matchedSubmission?.submissionID ?? submissionID,
+      skillID: matchedSubmission?.skillID ?? notification.relatedSkillID
+    };
   }
 
   if (isAdminReviewTask(notification)) {

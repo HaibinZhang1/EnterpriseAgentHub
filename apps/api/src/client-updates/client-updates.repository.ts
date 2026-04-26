@@ -28,10 +28,27 @@ export class ClientUpdatesRepository {
       `,
       [userID],
     );
-    if (!actor || actor.role !== 'admin' || actor.admin_level === null) {
+    if (!actor || actor.role !== 'admin' || actor.admin_level !== 1) {
       throw new ForbiddenException('permission_denied');
     }
     return actor;
+  }
+
+  async findReleaseByTarget(input: {
+    version: string;
+    platform: string;
+    arch: string;
+    channel: string;
+  }): Promise<ClientUpdateReleaseRow | null> {
+    return this.database.one<ClientUpdateReleaseRow>(
+      releaseSummarySQL(`
+        WHERE r.version = $1
+          AND r.platform = $2
+          AND r.arch = $3
+          AND r.channel = $4
+      `),
+      [input.version, input.platform, input.arch, input.channel],
+    );
   }
 
   async createRelease(input: CreateClientUpdateReleaseInput): Promise<string> {

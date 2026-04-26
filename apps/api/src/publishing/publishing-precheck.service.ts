@@ -9,6 +9,7 @@ import { DatabaseService } from '../database/database.service';
 import { PackageStorageService } from './package-storage.service';
 import { PublishingRepository } from './publishing.repository';
 import { ReviewerRoutingService } from './reviewer-routing.service';
+import { PublishingNotificationService } from './publishing-notification.service';
 import { PublishingPublicationService } from './publishing-publication.service';
 import {
   buildPrecheckItems,
@@ -28,6 +29,7 @@ export class PublishingPrecheckService {
     private readonly publishingRepository: PublishingRepository,
     private readonly reviewerRouting: ReviewerRoutingService,
     private readonly packageStorage: PackageStorageService,
+    private readonly notifications: PublishingNotificationService,
     private readonly publication: PublishingPublicationService,
   ) {}
 
@@ -108,6 +110,9 @@ export class PublishingPrecheckService {
     });
     const nextWorkflow = hasWarnings(items) ? 'manual_precheck' : 'pending_review';
     const autoApprove = !hasWarnings(items) && (await this.reviewerRouting.shouldAutoApprove(review));
+    const reviewerIDs = autoApprove
+      ? []
+      : await this.reviewerRouting.eligibleReviewerIDsFor({ ...review, workflow_state: nextWorkflow });
 
     await this.database.transaction(async (client) => {
       await client.query(
@@ -116,6 +121,7 @@ export class PublishingPrecheckService {
         SET precheck_results = $2::jsonb,
             workflow_state = $3,
             review_status = 'pending',
+            claimed_from_workflow_state = NULL,
             updated_at = now()
         WHERE id = $1
         `,
@@ -125,9 +131,22 @@ export class PublishingPrecheckService {
         client,
         reviewID,
         null,
-        hasWarnings(items) ? 'manual_precheck' : 'system_precheck_passed',
+        hasWarnings(items) ? 'system_precheck_needs_manual_review' : 'system_precheck_passed',
         hasWarnings(items) ? '系统初审发现异常，转人工复核。' : '系统初审通过。',
       );
+      if (nextWorkflow === 'manual_precheck') {
+        await this.notifications.notifyAuthorWorkflow(client, review, {
+          title: `${review.skill_display_name} 进入人工复核`,
+          summary: '系统初审发现异常，已转人工复核。',
+        });
+        await this.notifications.notifyReviewTask(client, review, reviewerIDs, '系统初审发现异常，等待人工复核。');
+      } else if (!autoApprove) {
+        await this.notifications.notifyAuthorWorkflow(client, review, {
+          title: `${review.skill_display_name} 进入管理员审核`,
+          summary: '系统初审通过，已进入管理员审核队列。',
+        });
+        await this.notifications.notifyReviewTask(client, review, reviewerIDs, '系统初审通过，等待管理员审核。');
+      }
     });
 
     if (autoApprove) {

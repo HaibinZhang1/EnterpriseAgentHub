@@ -20,6 +20,7 @@ interface NotificationRow {
   summary: string;
   object_type: NotificationDto['objectType'] | null;
   object_id: string | null;
+  action: string | null;
   read_at: Date | null;
   created_at: Date;
 }
@@ -35,7 +36,7 @@ export class NotificationsService {
     const unreadClause = query.unreadOnly === 'true' ? 'AND read_at IS NULL' : '';
     const result = await this.database.query<NotificationRow>(
       `
-      SELECT id, type, title, summary, object_type, object_id, read_at, created_at
+      SELECT id, type, title, summary, object_type, object_id, action, read_at, created_at
       FROM notifications
       WHERE user_id = $1 ${unreadClause}
       ORDER BY created_at DESC
@@ -75,8 +76,21 @@ function toNotification(row: NotificationRow): NotificationDto {
     objectID: row.object_id ?? undefined,
     createdAt: row.created_at.toISOString(),
     read: row.read_at !== null,
-    action: row.object_type === 'skill' && row.object_id ? `/skills/${row.object_id}` : '/notifications',
+    action: row.action ?? defaultAction(row),
   };
+}
+
+function defaultAction(row: NotificationRow): string {
+  if (row.object_type === 'skill' && row.object_id) {
+    return `/skills/${row.object_id}`;
+  }
+  if (row.object_type === 'review' && row.object_id) {
+    return `/admin/reviews/${row.object_id}`;
+  }
+  if (row.object_type === 'publisher_submission' && row.object_id) {
+    return `/publisher/submissions/${row.object_id}`;
+  }
+  return '/notifications';
 }
 
 function positiveInt(value: string | undefined, fallback: number, max = 100): number {

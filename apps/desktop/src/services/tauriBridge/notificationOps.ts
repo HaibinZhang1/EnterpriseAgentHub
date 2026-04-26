@@ -24,10 +24,7 @@ export async function upsertLocalNotifications(notifications: LocalNotification[
 export async function markLocalNotificationsRead(notificationIDs: string[] | "all"): Promise<void> {
   const invoke = getInvoke();
   if (invoke) {
-    await invoke(P1_LOCAL_COMMANDS.markLocalNotificationsRead, {
-      notificationIds: notificationIDs === "all" ? [] : notificationIDs,
-      all: notificationIDs === "all"
-    });
+    await invoke(P1_LOCAL_COMMANDS.markLocalNotificationsRead, buildMarkLocalNotificationsReadArgs(notificationIDs));
     return;
   }
   if (isBrowserPreviewMode()) {
@@ -39,10 +36,29 @@ export async function markLocalNotificationsRead(notificationIDs: string[] | "al
   await mockWait(80);
 }
 
+export function buildMarkLocalNotificationsReadArgs(notificationIDs: string[] | "all") {
+  const ids = notificationIDs === "all" ? [] : notificationIDs;
+  return {
+    notificationIds: ids,
+    notificationIDs: ids,
+    all: notificationIDs === "all"
+  };
+}
+
+export function buildMarkOfflineEventsSyncedArgs(eventIDs: string[]) {
+  return {
+    eventIds: eventIDs,
+    eventIDs
+  };
+}
+
 export async function markOfflineEventsSynced(eventIDs: string[]): Promise<string[]> {
   const invoke = getInvoke();
   if (invoke) {
-    const result = await invoke<{ syncedEventIDs?: string[]; syncedEventIds?: string[] }>(P1_LOCAL_COMMANDS.markOfflineEventsSynced, { eventIds: eventIDs });
+    const result = await invoke<{ syncedEventIDs?: string[]; syncedEventIds?: string[] }>(
+      P1_LOCAL_COMMANDS.markOfflineEventsSynced,
+      buildMarkOfflineEventsSyncedArgs(eventIDs)
+    );
     return result.syncedEventIDs ?? result.syncedEventIds ?? [];
   }
   if (isBrowserPreviewMode()) {

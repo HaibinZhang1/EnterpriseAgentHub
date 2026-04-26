@@ -43,8 +43,18 @@ export class ClientUpdatesService {
   ): Promise<ClientUpdateReleaseSummaryDto> {
     await this.repository.assertAdminActor(userID);
     this.assertWindowsX64(request.platform, request.arch);
+    const version = this.requireSemver(request.version, 'version');
+    const existingRelease = await this.repository.findReleaseByTarget({
+      version,
+      platform: request.platform,
+      arch: request.arch,
+      channel: request.channel,
+    });
+    if (existingRelease) {
+      throw new BadRequestException('version_already_exists');
+    }
     const releaseID = await this.repository.createRelease({
-      version: this.requireSemver(request.version, 'version'),
+      version,
       buildNumber: normalizeText(request.buildNumber),
       platform: request.platform,
       arch: request.arch,
@@ -69,6 +79,10 @@ export class ClientUpdatesService {
     let bucket = this.storage.bucket();
     let objectKey = normalizeText(request.objectKey) ?? undefined;
     const packageName = requireNonEmptyText(request.packageName || file?.originalname, 'packageName');
+    this.assertExePackage(packageName);
+    if (file) {
+      this.assertExePackage(file.originalname);
+    }
     let sizeBytes = normalizeNumber(request.sizeBytes ?? file?.size, 'sizeBytes');
     let sha256 = this.normalizeSha256(request.sha256);
     const signatureStatus = this.normalizeSignatureStatus(request.signatureStatus);
@@ -241,6 +255,9 @@ export class ClientUpdatesService {
       throw new ForbiddenException('permission_denied');
     }
     const release = await this.repository.loadReleaseOrThrow(releaseID);
+    if (release.status !== 'published') {
+      throw new NotFoundException('package_unavailable');
+    }
     if (!release.artifact_bucket || !release.artifact_object_key || !release.artifact_package_name) {
       throw new NotFoundException('package_unavailable');
     }
@@ -313,6 +330,12 @@ export class ClientUpdatesService {
   private assertWindowsX64(platform: string, arch: string): void {
     if (platform !== 'windows' || arch !== 'x64') {
       throw new BadRequestException('validation_failed');
+    }
+  }
+
+  private assertExePackage(packageName: string): void {
+    if (!packageName.trim().toLowerCase().endsWith('.exe')) {
+      throw new BadRequestException('exe_required');
     }
   }
 

@@ -31,8 +31,9 @@ export interface ApiNotification {
   type: LocalNotification["type"];
   title: string;
   summary: string;
-  objectType?: "skill" | "tool" | "project" | "connection";
+  objectType?: LocalNotification["objectType"];
   objectID?: string;
+  action?: string;
   createdAt: string;
   read: boolean;
 }
@@ -45,6 +46,8 @@ export type ApiSkill = Omit<
 
 function targetPageForNotification(notification: ApiNotification): PageID {
   if (notification.objectType === "skill") return "market";
+  if (notification.objectType === "review") return "review";
+  if (notification.objectType === "publisher_submission") return "publisher";
   if (notification.objectType === "tool") return "target_management";
   if (notification.objectType === "project") return "target_management";
   return "home";
@@ -56,6 +59,9 @@ export function normalizeNotification(notification: ApiNotification): LocalNotif
     type: notification.type,
     title: notification.title,
     summary: notification.summary,
+    objectType: notification.objectType,
+    objectID: notification.objectID,
+    action: notification.action,
     relatedSkillID: notification.objectType === "skill" ? notification.objectID ?? null : null,
     targetPage: targetPageForNotification(notification),
     occurredAt: notification.createdAt,
@@ -139,6 +145,14 @@ export function isUnauthenticatedError(error: unknown): boolean {
 
 export function isPermissionError(error: unknown): boolean {
   return isApiError(error) && (error.status === 403 || error.code === "permission_denied");
+}
+
+export function isConnectionUnavailableError(error: unknown): boolean {
+  return isApiError(error) && error.status === 0;
+}
+
+export function isServerUnavailableError(error: unknown): boolean {
+  return isApiError(error) && error.status >= 500;
 }
 
 export async function downloadAuthenticatedFile(url: string, suggestedName = "package.zip"): Promise<void> {

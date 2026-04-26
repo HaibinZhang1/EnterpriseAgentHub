@@ -8,6 +8,7 @@ import type {
   LocalNotification,
   MarketFilters,
   PackageFileContent,
+  ClientUpdateReleaseSummary,
   PublisherSkillSummary,
   PublisherSubmissionDetail,
   ReviewDetail,
@@ -26,7 +27,8 @@ import {
   type ClientUpdateCheckResponse,
   type ClientUpdateDownloadTicket,
   type ClientUpdateEventInput,
-  type ClientUpdateStatus
+  type ClientUpdateStatus,
+  type PushAdminClientUpdateExeInput
 } from "./p1Client/clientUpdates.ts";
 import { createDesktopSyncClient } from "./p1Client/desktopSync.ts";
 import { createMarketClient } from "./p1Client/market.ts";
@@ -44,7 +46,15 @@ export {
   type ClientUpdateEventInput,
   type ClientUpdateStatus
 } from "./p1Client/clientUpdates.ts";
-export { buildSkillListQuery, downloadAuthenticatedFile, isApiError, isPermissionError, isUnauthenticatedError } from "./p1Client/shared.ts";
+export {
+  buildSkillListQuery,
+  downloadAuthenticatedFile,
+  isApiError,
+  isConnectionUnavailableError,
+  isPermissionError,
+  isServerUnavailableError,
+  isUnauthenticatedError
+} from "./p1Client/shared.ts";
 
 export const REMOTE_WRITE_BLOCK_MESSAGE = "当前客户端版本过低，请先升级后继续。";
 export const REMOTE_WRITE_ALLOWLIST = [
@@ -143,6 +153,9 @@ export interface P1Client {
   approveReview(reviewID: string, comment: string): Promise<ReviewDetail>;
   returnReview(reviewID: string, comment: string): Promise<ReviewDetail>;
   rejectReview(reviewID: string, comment: string): Promise<ReviewDetail>;
+  listAdminClientUpdateReleases(): Promise<ClientUpdateReleaseSummary[]>;
+  pushAdminClientUpdateExe(input: PushAdminClientUpdateExeInput): Promise<ClientUpdateReleaseSummary>;
+  pauseAdminClientUpdateRelease(releaseID: string): Promise<ClientUpdateReleaseSummary>;
   checkClientUpdate(input: ClientUpdateCheckInput): Promise<ClientUpdateCheckResponse>;
   requestClientUpdateDownloadTicket(releaseID: string): Promise<ClientUpdateDownloadTicket>;
   reportClientUpdateEvent(input: ClientUpdateEventInput): Promise<{ ok: true }>;
@@ -206,6 +219,9 @@ export const p1Client: P1Client = {
   approveReview: guardRemoteWrite(P1_API_ROUTES.adminReviewApprove, reviewClient.approveReview),
   returnReview: guardRemoteWrite(P1_API_ROUTES.adminReviewReturn, reviewClient.returnReview),
   rejectReview: guardRemoteWrite(P1_API_ROUTES.adminReviewReject, reviewClient.rejectReview),
+  listAdminClientUpdateReleases: clientUpdatesClient.listAdminClientUpdateReleases,
+  pushAdminClientUpdateExe: guardRemoteWrite(P1_API_ROUTES.adminClientUpdateReleases, clientUpdatesClient.pushAdminClientUpdateExe),
+  pauseAdminClientUpdateRelease: guardRemoteWrite(P1_API_ROUTES.adminClientUpdatePause, clientUpdatesClient.pauseAdminClientUpdateRelease),
   checkClientUpdate: clientUpdatesClient.checkClientUpdate,
   requestClientUpdateDownloadTicket: guardRemoteWrite(
     CLIENT_UPDATE_ROUTES.downloadTicket,

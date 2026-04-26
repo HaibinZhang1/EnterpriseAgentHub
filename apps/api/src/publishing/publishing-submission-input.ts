@@ -121,18 +121,28 @@ function parseStringList(value: string | undefined): string[] {
 }
 
 function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values)];
+  const next: string[] = [];
+  for (const value of values) {
+    if (!next.includes(value)) {
+      next.push(value);
+    }
+  }
+  return next;
 }
 
 function isSkillCategory(value: string): boolean {
-  return (SKILL_CATEGORIES as readonly string[]).includes(value);
+  return includesString(SKILL_CATEGORIES, value);
 }
 
 function isSkillTagList(values: string[]): boolean {
   if (values.length < 1 || values.length > 5) {
     return false;
   }
-  return values.every((value) => (SKILL_TAGS as readonly string[]).includes(value));
+  return values.every((value) => includesString(SKILL_TAGS, value));
+}
+
+function includesString(values: readonly string[], value: string): boolean {
+  return values.some((item) => item === value);
 }
 
 function isVisibilityLevel(value: string | null | undefined): value is VisibilityLevel {

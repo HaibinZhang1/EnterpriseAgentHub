@@ -873,6 +873,10 @@ button:disabled,
   background: var(--success);
 }
 
+.avatar-status-dot.failed {
+  background: var(--warning);
+}
+
 .icon-tone-sage {
   --icon-tone-fg: var(--icon-sage-fg);
   --icon-tone-bg: var(--icon-sage-bg);
@@ -3745,6 +3749,143 @@ button:disabled,
   gap: 10px;
 }
 
+.client-update-push-form {
+  gap: 12px;
+}
+
+.client-update-upload-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 104px;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  background:
+    linear-gradient(180deg, var(--surface-strong), var(--surface)),
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.06), transparent 62%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  cursor: pointer;
+  transition: border-color var(--motion-base), background var(--motion-base), box-shadow var(--motion-base), transform var(--motion-base);
+}
+
+.client-update-upload-card:hover,
+.client-update-upload-card:focus-within {
+  border-color: var(--primary);
+  background:
+    linear-gradient(180deg, var(--surface-strong), var(--surface)),
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), transparent 64%);
+  box-shadow: var(--focus-shadow);
+  transform: translateY(-1px);
+}
+
+.client-update-upload-card.has-file {
+  border-style: solid;
+  border-color: var(--success-border);
+  background:
+    linear-gradient(180deg, var(--surface-strong), var(--surface)),
+    linear-gradient(135deg, color-mix(in oklch, var(--success-soft) 72%, transparent), transparent 62%);
+}
+
+.client-update-upload-card input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.client-update-upload-icon,
+.client-update-file-summary > svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--icon-pine-fg);
+  background: var(--icon-pine-bg);
+  border: 1px solid var(--icon-pine-border);
+}
+
+.client-update-upload-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+}
+
+.client-update-upload-copy,
+.client-update-file-summary > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.client-update-upload-label {
+  color: var(--primary);
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-semibold);
+}
+
+.client-update-upload-copy strong,
+.client-update-file-summary strong {
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: var(--text-body-strong);
+  line-height: var(--leading-snug);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-update-upload-copy small,
+.client-update-file-summary small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-update-upload-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-semibold);
+  background: var(--surface);
+}
+
+.client-update-file-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm);
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.client-update-file-summary > svg {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: var(--radius-xs);
+}
+
 .inline-form {
   margin-top: 8px;
 }
@@ -5342,6 +5483,15 @@ button:disabled,
     align-items: stretch;
   }
 
+  .client-update-upload-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .client-update-upload-action {
+    grid-column: 2;
+    justify-self: start;
+  }
+
   .definition-grid.skill-detail-meta-grid,
   .skill-detail-note-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5611,6 +5761,21 @@ button:disabled,
 
   .home-quick-action {
     flex: 0 0 min(168px, 48vw);
+  }
+
+  .client-update-upload-card {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    min-height: 0;
+  }
+
+  .client-update-upload-action {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .client-update-file-summary {
+    align-items: flex-start;
   }
 
   .workspace-layout,

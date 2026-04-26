@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { WorkflowState } from '../common/p1-contracts';
 import { DatabaseService } from '../database/database.service';
 import { PackageStorageService } from './package-storage.service';
+import { PublishingNotificationService } from './publishing-notification.service';
 import { PublishingRepository } from './publishing.repository';
 import type { ActorContext, ReviewRecord } from './publishing.types';
 
@@ -12,6 +13,7 @@ export class PublishingPublicationService {
     private readonly database: DatabaseService,
     private readonly publishingRepository: PublishingRepository,
     private readonly packageStorage: PackageStorageService,
+    private readonly notifications: PublishingNotificationService,
   ) {}
 
   async finalizeReview(
@@ -22,6 +24,14 @@ export class PublishingPublicationService {
     comment: string,
   ): Promise<void> {
     await this.database.transaction(async (client) => {
+      const reviewResult = await client.query<Pick<ReviewRecord, 'review_id' | 'skill_display_name' | 'submitter_id'>>(
+        `
+        SELECT id AS review_id, skill_display_name, submitter_id
+        FROM review_items
+        WHERE id = $1
+        `,
+        [reviewID],
+      );
       await client.query(
         `
         UPDATE review_items
@@ -31,16 +41,30 @@ export class PublishingPublicationService {
             review_summary = $4,
             lock_owner_id = NULL,
             lock_expires_at = NULL,
+            claimed_from_workflow_state = NULL,
             updated_at = now()
         WHERE id = $1
         `,
         [reviewID, workflowState, decision, comment],
       );
       await this.publishingRepository.insertHistory(client, reviewID, actorUserID, decision, comment);
+      const review = reviewResult.rows[0];
+      if (!review) {
+        return;
+      }
+      await this.notifications.notifyAuthorWorkflow(client, review, {
+        title: `${review.skill_display_name} ${decision === 'reject' ? '审核拒绝' : '被退回修改'}`,
+        summary: comment,
+      });
     });
   }
 
-  async publishSubmission(review: ReviewRecord, actor: ActorContext | null, comment: string): Promise<void> {
+  async publishSubmission(
+    review: ReviewRecord,
+    actor: ActorContext | null,
+    comment: string,
+    options: { preHistory?: { action: string; comment: string } } = {},
+  ): Promise<void> {
     const currentSkill = review.current_version ? await this.publishingRepository.loadSkillByID(review.skill_id) : null;
     await this.database.transaction(async (client) => {
       const payload = review.submission_payload ?? {
@@ -224,13 +248,27 @@ export class PublishingPublicationService {
             review_summary = $2,
             lock_owner_id = NULL,
             lock_expires_at = NULL,
+            claimed_from_workflow_state = NULL,
             published_version_id = $3,
             updated_at = now()
         WHERE id = $1
         `,
         [review.review_id, comment, publishedVersionID],
       );
+      if (options.preHistory) {
+        await this.publishingRepository.insertHistory(
+          client,
+          review.review_id,
+          actor?.userID ?? null,
+          options.preHistory.action,
+          options.preHistory.comment,
+        );
+      }
       await this.publishingRepository.insertHistory(client, review.review_id, actor?.userID ?? null, actor ? 'approve' : 'auto_approve', comment);
+      await this.notifications.notifyAuthorWorkflow(client, review, {
+        title: `${review.skill_display_name} 已发布`,
+        summary: comment,
+      });
     });
   }
 }

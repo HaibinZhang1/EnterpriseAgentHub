@@ -1,4 +1,4 @@
-import type { ChangeEvent, Dispatch, FormEvent, SetStateAction } from "react";
+import type { ChangeEvent, Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
@@ -20,10 +20,10 @@ import {
   Users,
   X
 } from "lucide-react";
-import type { AdminSkill, DiscoveredLocalSkill, MarketFilters, PublishDraft, PublisherSkillSummary, PublisherSubmissionDetail, PublishScopeType, ReviewDetail, RiskLevel, SkillLeaderboardItem, SkillSummary } from "../domain/p1.ts";
+import type { AdminSkill, ClientUpdateReleaseSummary, DiscoveredLocalSkill, MarketFilters, PublishDraft, PublisherSkillSummary, PublisherSubmissionDetail, PublishScopeType, ReviewDetail, RiskLevel, SkillLeaderboardItem, SkillSummary } from "../domain/p1.ts";
 import { SKILL_CATEGORIES, SKILL_TAGS } from "../domain/p1.ts";
 import { buildPublishPrecheck } from "../state/ui/publishPrecheck.ts";
-import type { DesktopUIState } from "../state/useDesktopUIState.ts";
+import { canAccessClientUpdateManagement, type DesktopUIState } from "../state/useDesktopUIState.ts";
 import type { P1WorkspaceState } from "../state/useP1Workspace.ts";
 import { downloadAuthenticatedFile } from "../services/p1Client.ts";
 import { isCommunityVisibleSkill } from "../state/p1WorkspaceHelpers.ts";
@@ -2299,13 +2299,16 @@ export function LocalSection({ workspace, ui }: SectionProps) {
   );
 }
 
-function ManageSidebar({ ui }: { ui: DesktopUIState }) {
-  const items = [
+function ManageSidebar({ workspace, ui }: SectionProps) {
+  const items: Array<{ id: "reviews" | "skills" | "departments" | "users" | "client_updates"; label: string; icon: ReactNode }> = [
     { id: "reviews", label: "审核", icon: <ClipboardCheck size={16} /> },
     { id: "skills", label: "Skills", icon: <Sparkles size={16} /> },
     { id: "departments", label: "部门", icon: <Building2 size={16} /> },
-    { id: "users", label: "用户", icon: <Users size={16} /> }
-  ] as const;
+    { id: "users", label: "用户", icon: <Users size={16} /> },
+    ...(canAccessClientUpdateManagement(workspace.currentUser)
+      ? [{ id: "client_updates" as const, label: "客户端更新", icon: <Upload size={16} /> }]
+      : [])
+  ];
 
   return (
     <aside className="workspace-sidebar">
@@ -3247,11 +3250,211 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
   );
 }
 
+const clientUpdateVersionPattern = /^\d+\.\d+\.\d+$/;
+
+function inferClientUpdateVersion(fileName: string): string {
+  return fileName.match(/(?:^|[^\d])(\d+\.\d+\.\d+)(?:[^\d]|$)/)?.[1] ?? "";
+}
+
+function formatClientUpdateSize(sizeBytes: number | null | undefined): string {
+  if (!sizeBytes || !Number.isFinite(sizeBytes)) return "-";
+  if (sizeBytes >= 1024 * 1024) return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+}
+
+function clientUpdateStatusLabel(status: ClientUpdateReleaseSummary["status"]): string {
+  if (status === "published") return "已推送";
+  if (status === "paused") return "已暂停";
+  if (status === "yanked") return "已撤回";
+  return "草稿";
+}
+
+function clientUpdateStatusTone(status: ClientUpdateReleaseSummary["status"]): "success" | "warning" | "danger" | "info" | "neutral" {
+  if (status === "published") return "success";
+  if (status === "paused") return "warning";
+  if (status === "yanked") return "danger";
+  return "info";
+}
+
+function latestPublishedClientUpdate(releases: ClientUpdateReleaseSummary[]): ClientUpdateReleaseSummary | null {
+  return [...releases]
+    .filter((release) => release.status === "published")
+    .sort((left, right) => Date.parse(right.publishedAt ?? right.updatedAt) - Date.parse(left.publishedAt ?? left.updatedAt))[0] ?? null;
+}
+
+function ManageClientUpdatesPane({ workspace, ui }: SectionProps) {
+  const isL1Admin = canAccessClientUpdateManagement(workspace.currentUser);
+  const refreshClientUpdateReleases = workspace.adminData.refreshClientUpdateReleases;
+  const pushClientUpdateExe = workspace.adminData.pushClientUpdateExe;
+  const pauseClientUpdateRelease = workspace.adminData.pauseClientUpdateRelease;
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [version, setVersion] = useState("");
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [pausingReleaseID, setPausingReleaseID] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isL1Admin) return;
+    void refreshClientUpdateReleases().catch((refreshError) => {
+      setError(refreshError instanceof Error ? refreshError.message : "客户端更新记录加载失败。");
+    });
+  }, [isL1Admin, refreshClientUpdateReleases]);
+
+  const releases = useMemo(
+    () => [...workspace.adminData.clientUpdateReleases].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+    [workspace.adminData.clientUpdateReleases]
+  );
+  const currentRelease = useMemo(() => latestPublishedClientUpdate(releases), [releases]);
+  const canPush = Boolean(selectedFile && clientUpdateVersionPattern.test(version.trim()) && !busy);
+
+  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setError(null);
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".exe")) {
+      setSelectedFile(null);
+      setError("请上传 Windows EXE 安装包。");
+      return;
+    }
+    setSelectedFile(file);
+    setVersion((current) => current.trim() || inferClientUpdateVersion(file.name));
+  }
+
+  async function onPush(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFile) {
+      setError("请先选择 EXE 安装包。");
+      return;
+    }
+    if (!clientUpdateVersionPattern.test(version.trim())) {
+      setError("版本号请填写为 x.y.z 格式，例如 1.2.3。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await pushClientUpdateExe({ file: selectedFile, version: version.trim() });
+      setSelectedFile(null);
+      setVersion("");
+      setFileInputKey((current) => current + 1);
+    } catch (pushError) {
+      setError(pushError instanceof Error ? pushError.message : "客户端更新推送失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pauseRelease(releaseID: string) {
+    setPausingReleaseID(releaseID);
+    setError(null);
+    try {
+      await pauseClientUpdateRelease(releaseID);
+    } catch (pauseError) {
+      setError(pauseError instanceof Error ? pauseError.message : "暂停推送失败。");
+    } finally {
+      setPausingReleaseID(null);
+    }
+  }
+
+  if (!isL1Admin) {
+    return (
+      <section className="stage-panel">
+        <SectionEmpty title="仅一级管理员可推送客户端更新" body="客户端安装包会影响所有桌面端用户，请使用一级管理员账号操作。" />
+      </section>
+    );
+  }
+
+  return (
+    <div className="manage-pane-grid client-updates-workbench">
+      <section className="stage-panel list-panel">
+        <div className="manage-panel-toolbar stack">
+          <div>
+            <p className="eyebrow">当前线上版本</p>
+            <h3>{currentRelease?.version ?? "暂无已推送版本"}</h3>
+          </div>
+          {currentRelease ? (
+            <div className="meta-strip">
+              <span className="metric-chip">{formatClientUpdateSize(currentRelease.artifact?.sizeBytes)}</span>
+              <span className="metric-chip">{formatDate(currentRelease.publishedAt ?? currentRelease.updatedAt, ui.language)}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <form className="form-stack compact client-update-push-form" onSubmit={onPush}>
+          <label className={selectedFile ? "client-update-upload-card has-file" : "client-update-upload-card"}>
+            <input key={fileInputKey} type="file" accept=".exe,application/x-msdownload" aria-label="上传 EXE 安装包" onChange={onFileChange} />
+            <span className="client-update-upload-icon">
+              <Upload size={22} strokeWidth={1.9} />
+            </span>
+            <span className="client-update-upload-copy">
+              <span className="client-update-upload-label">上传 EXE</span>
+              <strong>{selectedFile ? selectedFile.name : "选择 Windows EXE 安装包"}</strong>
+              <small>{selectedFile ? `${formatClientUpdateSize(selectedFile.size)} · 点击可重新选择` : "支持 .exe 文件，系统会尝试从文件名识别版本号"}</small>
+            </span>
+            <span className="client-update-upload-action">{selectedFile ? "更换文件" : "浏览文件"}</span>
+          </label>
+          {selectedFile ? (
+            <div className="client-update-file-summary">
+              <PackageCheck size={16} />
+              <span>
+                <strong>{selectedFile.name}</strong>
+                <small>{formatClientUpdateSize(selectedFile.size)}</small>
+              </span>
+            </div>
+          ) : null}
+          <label className="field">
+            <span>确认版本号</span>
+            <input value={version} placeholder="1.2.3" inputMode="decimal" onChange={(event) => setVersion(event.target.value)} />
+          </label>
+          {error ? <small className="field-hint warning">{error}</small> : null}
+          <button className="btn btn-primary" type="submit" disabled={!canPush}>
+            <Upload size={14} />
+            {busy ? "推送中..." : "推送给客户端"}
+          </button>
+        </form>
+      </section>
+
+      <section className="stage-panel detail-panel wide inspector-panel">
+        <div className="detail-block">
+          <p className="eyebrow">历史版本</p>
+          <h3>客户端更新记录</h3>
+        </div>
+        <div className="stack-list">
+          {releases.length === 0 ? <SectionEmpty title="暂无客户端更新记录" body="上传 EXE 并确认版本号后，会在这里看到推送记录。" compact align="start" /> : null}
+          {releases.map((release) => (
+            <article className="micro-row" key={release.releaseID} data-testid="client-update-release-row">
+              <div>
+                <strong>v{release.version}</strong>
+                <small>
+                  {release.artifact?.packageName ?? "尚未上传安装包"} · {formatClientUpdateSize(release.artifact?.sizeBytes)}
+                </small>
+              </div>
+              <span className="selection-row-meta">
+                <TagPill tone={clientUpdateStatusTone(release.status)}>{clientUpdateStatusLabel(release.status)}</TagPill>
+                <small>{formatDate(release.publishedAt ?? release.updatedAt, ui.language)}</small>
+                {release.status === "published" ? (
+                  <button className="btn btn-small" type="button" onClick={() => void pauseRelease(release.releaseID)} disabled={pausingReleaseID === release.releaseID}>
+                    {pausingReleaseID === release.releaseID ? "暂停中..." : "暂停推送"}
+                  </button>
+                ) : null}
+              </span>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function ManageSection({ workspace, ui }: SectionProps) {
   if (!workspace.isAdminConnected) {
     return (
       <div className="stage-page workspace-page manage-page">
-        <AuthGateCard title="管理入口仅对在线管理员开放" body="登录并保持连接后，可统一处理审核、Skills、部门和用户。" onLogin={() => workspace.requireAuth("review")} />
+        <AuthGateCard title="管理入口仅对在线管理员开放" body="登录并保持连接后，可统一处理审核、Skills、部门、用户和客户端更新。" onLogin={() => workspace.requireAuth("review")} />
       </div>
     );
   }
@@ -3259,12 +3462,13 @@ export function ManageSection({ workspace, ui }: SectionProps) {
   return (
     <div className="stage-page workspace-page manage-page">
       <div className="workspace-layout">
-        <ManageSidebar ui={ui} />
+        <ManageSidebar workspace={workspace} ui={ui} />
         <div className="workspace-main">
           {ui.managePane === "reviews" ? <ManageReviewsPane workspace={workspace} ui={ui} /> : null}
           {ui.managePane === "skills" ? <ManageSkillsPane workspace={workspace} ui={ui} /> : null}
           {ui.managePane === "departments" ? <ManageDepartmentsPane workspace={workspace} /> : null}
           {ui.managePane === "users" ? <ManageUsersPane workspace={workspace} /> : null}
+          {ui.managePane === "client_updates" ? <ManageClientUpdatesPane workspace={workspace} ui={ui} /> : null}
         </div>
       </div>
     </div>

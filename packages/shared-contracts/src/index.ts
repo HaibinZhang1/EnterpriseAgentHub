@@ -129,6 +129,8 @@ export type ResolvedMode = InstallMode;
 
 export const NotificationType = {
   SkillUpdateAvailable: "skill_update_available",
+  SkillReviewTask: "skill_review_task",
+  SkillReviewProgress: "skill_review_progress",
   ClientUpdate: "client_update",
   SkillScopeRestricted: "skill_scope_restricted",
   LocalCopyBlocked: "local_copy_blocked",
@@ -142,6 +144,15 @@ export const NotificationType = {
   DisableResult: "disable_result"
 } as const;
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
+
+export type NotificationObjectType =
+  | "skill"
+  | "tool"
+  | "project"
+  | "connection"
+  | "client_update"
+  | "review"
+  | "publisher_submission";
 
 export const ClientReleasePlatform = {
   Windows: "windows"
@@ -270,6 +281,9 @@ export const ApiErrorCode = {
   SkillNotFound: "skill_not_found",
   ResourceNotFound: "resource_not_found",
   ValidationFailed: "validation_failed",
+  SkillIDExists: "skill_id_exists",
+  PrecheckOverrideCommentRequired: "precheck_override_comment_required",
+  ReviewLockExpired: "review_lock_expired",
   SkillDelisted: "skill_delisted",
   ScopeRestricted: "scope_restricted",
   PackageUnavailable: "package_unavailable",
@@ -592,7 +606,7 @@ export interface Notification {
   readonly type: NotificationType;
   readonly title: string;
   readonly summary: string;
-  readonly objectType?: "skill" | "tool" | "project" | "connection" | "client_update";
+  readonly objectType?: NotificationObjectType;
   readonly objectID?: string;
   readonly createdAt: ISODateTimeString;
   readonly read: boolean;
@@ -604,6 +618,9 @@ export interface LocalNotification {
   readonly type: NotificationType;
   readonly title: string;
   readonly summary: string;
+  readonly objectType?: NotificationObjectType;
+  readonly objectID?: string;
+  readonly action?: string;
   readonly relatedSkillID: SkillID | null;
   readonly targetPage: NavigationItem | "detail";
   readonly occurredAt: ISODateTimeString;

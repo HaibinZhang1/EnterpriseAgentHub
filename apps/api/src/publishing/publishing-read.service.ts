@@ -17,6 +17,7 @@ import {
   mapReviewItem,
 } from './publishing-review-mappers';
 import { PublishingReadRepository } from './publishing-read.repository';
+import { PublishingRepository } from './publishing.repository';
 import { ReviewerRoutingService } from './reviewer-routing.service';
 import type { ActorContext, ReviewRecord } from './publishing.types';
 
@@ -25,11 +26,13 @@ export class PublishingReadService {
   constructor(
     private readonly skillsService: SkillsService,
     private readonly readRepository: PublishingReadRepository,
+    private readonly publishingRepository: PublishingRepository,
     private readonly reviewerRouting: ReviewerRoutingService,
     private readonly packageStorage: PackageStorageService,
   ) {}
 
   async listPublisherSkills(userID: string): Promise<PublisherSkillSummaryDto[]> {
+    await this.publishingRepository.releaseExpiredReviewLocks();
     const actor = await this.readRepository.loadActor(userID);
     const [skillRows, submissionRows] = await Promise.all([
       this.readRepository.listPublisherSkillsForAuthor(actor.userID),
@@ -42,6 +45,7 @@ export class PublishingReadService {
   }
 
   async getPublisherSubmission(userID: string, submissionID: string): Promise<PublisherSubmissionDetailDto> {
+    await this.publishingRepository.releaseExpiredReviewLocks(submissionID);
     const actor = await this.readRepository.loadActor(userID);
     const review = await this.readRepository.loadReview(submissionID);
     if (review.submitter_id !== actor.userID) {
@@ -53,6 +57,7 @@ export class PublishingReadService {
   }
 
   async listPublisherSubmissionFiles(userID: string, submissionID: string): Promise<PackageFileEntryDto[]> {
+    await this.publishingRepository.releaseExpiredReviewLocks(submissionID);
     const actor = await this.readRepository.loadActor(userID);
     const review = await this.readRepository.loadReview(submissionID);
     if (review.submitter_id !== actor.userID) {
@@ -66,6 +71,7 @@ export class PublishingReadService {
     submissionID: string,
     relativePath: string,
   ): Promise<PackageFileContentDto> {
+    await this.publishingRepository.releaseExpiredReviewLocks(submissionID);
     const actor = await this.readRepository.loadActor(userID);
     const review = await this.readRepository.loadReview(submissionID);
     if (review.submitter_id !== actor.userID) {
@@ -75,6 +81,7 @@ export class PublishingReadService {
   }
 
   async listReviews(userID: string): Promise<ReviewItemDto[]> {
+    await this.publishingRepository.releaseExpiredReviewLocks();
     const actor = await this.readRepository.loadActor(userID);
     if (actor.role !== 'admin' || actor.adminLevel === null) {
       throw new ForbiddenException('permission_denied');
@@ -92,6 +99,7 @@ export class PublishingReadService {
   }
 
   async getReview(userID: string, reviewID: string): Promise<ReviewDetailDto> {
+    await this.publishingRepository.releaseExpiredReviewLocks(reviewID);
     const actor = await this.readRepository.loadActor(userID);
     if (actor.role !== 'admin' || actor.adminLevel === null) {
       throw new ForbiddenException('permission_denied');
@@ -106,6 +114,7 @@ export class PublishingReadService {
   }
 
   async listReviewFiles(userID: string, reviewID: string): Promise<PackageFileEntryDto[]> {
+    await this.publishingRepository.releaseExpiredReviewLocks(reviewID);
     const actor = await this.readRepository.loadActor(userID);
     if (actor.role !== 'admin' || actor.adminLevel === null) {
       throw new ForbiddenException('permission_denied');
@@ -119,6 +128,7 @@ export class PublishingReadService {
   }
 
   async getReviewFileContent(userID: string, reviewID: string, relativePath: string): Promise<PackageFileContentDto> {
+    await this.publishingRepository.releaseExpiredReviewLocks(reviewID);
     const actor = await this.readRepository.loadActor(userID);
     if (actor.role !== 'admin' || actor.adminLevel === null) {
       throw new ForbiddenException('permission_denied');

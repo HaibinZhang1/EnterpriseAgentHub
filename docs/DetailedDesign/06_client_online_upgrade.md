@@ -350,19 +350,21 @@ SQLite 建议增加 `client_update_cache`：
 
 当管理员撤回版本后，下一次检查必须清理本地该版本提示，并将对应通知标记为失效或展示“该版本已撤回”。
 
-## 7. Linux Docker 更新包推送操作
+## 7. 客户端更新包推送操作
 
 ### 7.1 前置准备
 
-生产服务器不构建客户端。管理员应从 CI 或可信构建机拿到以下交付物：
+生产服务器不构建客户端。日常发布入口是管理端“客户端更新”页面：一级管理员拿到开发环境、CI 或可信构建机产出的 `exe` 后，上传该 `exe`、确认版本号并点击“推送给客户端”。管理端默认发布为 Windows x64 / stable / 100% / 非强制更新，服务端自动计算 SHA-256、记录包大小并写入对象存储。
+
+管理员最小交付物为：
 
 ```text
 EnterpriseAgentHub_1.6.0_x64-setup.exe
-EnterpriseAgentHub_1.6.0_x64-setup.exe.sha256
-release-notes.md
 ```
 
-本地校验：
+如构建环境额外产出 `.sha256` 或 release notes，可用于人工交叉检查，但不要求管理员在管理端上传；服务端计算结果为准。
+
+CLI / Docker 发布脚本仅作为管理端不可用时的运维兜底路径。兜底操作前可先做本地校验：
 
 ```bash
 sha256sum -c EnterpriseAgentHub_1.6.0_x64-setup.exe.sha256
@@ -374,12 +376,10 @@ sha256sum -c EnterpriseAgentHub_1.6.0_x64-setup.exe.sha256
 ssh admin@server "mkdir -p /opt/EnterpriseAgentHub/release/client-updates/1.6.0"
 
 scp EnterpriseAgentHub_1.6.0_x64-setup.exe \
-  EnterpriseAgentHub_1.6.0_x64-setup.exe.sha256 \
-  release-notes.md \
   admin@server:/opt/EnterpriseAgentHub/release/client-updates/1.6.0/
 ```
 
-### 7.2 Docker 发布命令
+### 7.2 Docker 兜底发布命令
 
 建议在 API 镜像内提供一个幂等发布脚本，命名为：
 
@@ -395,7 +395,6 @@ export VERSION=1.6.0
 export CHANNEL=stable
 export PACKAGE=EnterpriseAgentHub_${VERSION}_x64-setup.exe
 export RELEASE_DIR=/opt/EnterpriseAgentHub/release/client-updates/${VERSION}
-export SHA256=$(awk '{print $1}' "${RELEASE_DIR}/${PACKAGE}.sha256")
 ```
 
 将文件复制进 API 容器临时目录：
@@ -407,10 +406,6 @@ docker compose -f infra/docker-compose.prod.yml exec api \
 docker compose -f infra/docker-compose.prod.yml cp \
   "${RELEASE_DIR}/${PACKAGE}" \
   api:/tmp/client-updates/${PACKAGE}
-
-docker compose -f infra/docker-compose.prod.yml cp \
-  "${RELEASE_DIR}/release-notes.md" \
-  api:/tmp/client-updates/release-notes.md
 ```
 
 发布为草稿并上传对象：
@@ -418,18 +413,18 @@ docker compose -f infra/docker-compose.prod.yml cp \
 ```bash
 docker compose -f infra/docker-compose.prod.yml exec api \
   npm run client-update:publish -- \
+  --server-url "http://127.0.0.1:3000" \
+  --admin-phone "${ADMIN_PHONE}" \
   --version "${VERSION}" \
   --build-number "20260419.1" \
   --platform windows \
   --arch x64 \
   --channel "${CHANNEL}" \
-  --file "/tmp/client-updates/${PACKAGE}" \
-  --sha256 "${SHA256}" \
-  --release-notes-file "/tmp/client-updates/release-notes.md" \
+  --artifact "/tmp/client-updates/${PACKAGE}" \
+  --release-notes "客户端更新 ${VERSION}" \
   --mandatory false \
-  --min-supported-version "1.4.0" \
-  --rollout-percent 10 \
-  --status published
+  --rollout-percent 100 \
+  --publish-now true
 ```
 
 该脚本内部必须执行：
@@ -437,7 +432,7 @@ docker compose -f infra/docker-compose.prod.yml exec api \
 1. 校验管理员身份或要求传入一次性管理员 token。
 2. 校验 SemVer 递增和版本唯一性。
 3. 计算文件 SHA-256，与传入值比对。
-4. 检查 Windows 签名状态，至少记录 `signed` / `unsigned`。
+4. 记录 Windows 签名状态，至少区分 `signed` / `unsigned` / `unknown`。
 5. 上传到 MinIO `client-updates` bucket。
 6. 创建或更新 draft 记录。
 7. 在事务中切换为 `published`。

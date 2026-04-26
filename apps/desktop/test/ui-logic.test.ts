@@ -7,6 +7,7 @@ import { buildSkillListQuery } from "../src/services/p1Client.ts";
 import {
   buildSettingsPanels,
   buildPublishPrecheck,
+  canAccessClientUpdateManagement,
   deriveTopLevelNavigation,
   legacyPageForView,
   mapLegacyPageToView,
@@ -29,6 +30,7 @@ import { deriveMarketSkills, deriveVisibleNavigation, deriveWorkspaceState } fro
 import { iconToneForLabel, iconTones } from "../src/ui/iconTone.ts";
 import { themeLabel } from "../src/ui/themeLabels.ts";
 import { buildDisableSkillArgs, buildEnableSkillArgs, buildUninstallSkillArgs, normalizeUninstallSkillResult } from "../src/services/tauriBridge/localCommandArgs.ts";
+import { buildMarkLocalNotificationsReadArgs, buildMarkOfflineEventsSyncedArgs } from "../src/services/tauriBridge/notificationOps.ts";
 import { deriveDiscoveredLocalSkills } from "../src/utils/discoveredLocalSkills.ts";
 import { defaultProjectSkillsPath, defaultToolConfigPath, defaultToolSkillsPath } from "../src/utils/platformPaths.ts";
 import { mergeLocalInstalls } from "../src/state/p1WorkspaceHelpers.ts";
@@ -210,6 +212,15 @@ test("legacy pages map into the new section model", () => {
     legacyPageForView({
       section: "manage",
       localPane: "skills",
+      managePane: "client_updates",
+      overlay: { kind: "none" }
+    }),
+    "admin_users"
+  );
+  assert.equal(
+    legacyPageForView({
+      section: "manage",
+      localPane: "skills",
       managePane: "reviews",
       overlay: { kind: "none" }
     }),
@@ -224,6 +235,12 @@ test("legacy pages map into the new section model", () => {
     }),
     "publisher"
   );
+});
+
+test("client update management is limited to first-level admins in UI helpers", () => {
+  assert.equal(canAccessClientUpdateManagement({ adminLevel: 1 }), true);
+  assert.equal(canAccessClientUpdateManagement({ adminLevel: 2 }), false);
+  assert.equal(canAccessClientUpdateManagement({ adminLevel: null }), false);
 });
 
 test("notification actions route old review and publisher events into the new IA targets", () => {
@@ -284,6 +301,59 @@ test("notification actions route old review and publisher events into the new IA
       publisherSubmissions: []
     }),
     { kind: "my_installed", installedFilter: "updates", skillID: "review-helper" }
+  );
+});
+
+test("structured publishing notifications route by object type without title matching", () => {
+  const appUpdate: AppUpdateState = defaultAppUpdateState("0.1.0");
+  const notifications: LocalNotification[] = [
+    {
+      notificationID: "notify-structured-review",
+      type: "skill_review_task",
+      title: "审核任务",
+      summary: "等待处理",
+      objectType: "review",
+      objectID: "rv_001",
+      action: "/admin/reviews/rv_001",
+      relatedSkillID: null,
+      targetPage: "review",
+      occurredAt: "2026-04-18T10:00:00.000Z",
+      unread: true,
+      source: "server"
+    },
+    {
+      notificationID: "notify-structured-publisher",
+      type: "skill_review_progress",
+      title: "发布进度",
+      summary: "审核通过",
+      objectType: "publisher_submission",
+      objectID: "rv_002",
+      action: "/publisher/submissions/rv_002",
+      relatedSkillID: null,
+      targetPage: "publisher",
+      occurredAt: "2026-04-18T10:01:00.000Z",
+      unread: true,
+      source: "server"
+    }
+  ];
+
+  const desktopNotifications = deriveDesktopNotifications({ appUpdate, notifications });
+  const reviewNotification = desktopNotifications.find((item) => item.notificationID === "notify-structured-review");
+  const publisherNotification = desktopNotifications.find((item) => item.notificationID === "notify-structured-publisher");
+
+  assert.deepEqual(
+    resolveDesktopNotificationAction(reviewNotification!, {
+      reviews: [],
+      publisherSubmissions: []
+    }),
+    { kind: "review", reviewID: "rv_001", skillID: null }
+  );
+  assert.deepEqual(
+    resolveDesktopNotificationAction(publisherNotification!, {
+      reviews: [],
+      publisherSubmissions: []
+    }),
+    { kind: "publisher", submissionID: "rv_002", skillID: null }
   );
 });
 
@@ -452,6 +522,30 @@ test("guest account presentation keeps settings as a local-first experience", ()
       buttonLabel: "本地模式",
       connectionTone: "offline",
       connectionLabel: "本地"
+    }
+  );
+});
+
+test("authenticated service failures are shown as service issues rather than local mode", () => {
+  assert.deepEqual(
+    deriveAccountPresentation({
+      user: {
+        username: "系统管理员",
+        phoneNumber: "13800000002",
+        role: "admin",
+        adminLevel: 1,
+        departmentID: "dept_company",
+        departmentName: "集团",
+        locale: "zh-CN"
+      },
+      loggedIn: true,
+      connectionStatus: "failed",
+      language: "zh-CN"
+    }),
+    {
+      buttonLabel: "系统管理员",
+      connectionTone: "failed",
+      connectionLabel: "服务异常"
     }
   );
 });
@@ -928,6 +1022,20 @@ test("local command args use Tauri camelCase IDs", () => {
     targetId: "repo"
   });
   assert.deepEqual(buildUninstallSkillArgs("ops-oncall-companion"), { skillId: "ops-oncall-companion" });
+  assert.deepEqual(buildMarkOfflineEventsSyncedArgs(["evt-1", "evt-2"]), {
+    eventIds: ["evt-1", "evt-2"],
+    eventIDs: ["evt-1", "evt-2"]
+  });
+  assert.deepEqual(buildMarkLocalNotificationsReadArgs(["notice-1"]), {
+    notificationIds: ["notice-1"],
+    notificationIDs: ["notice-1"],
+    all: false
+  });
+  assert.deepEqual(buildMarkLocalNotificationsReadArgs("all"), {
+    notificationIds: [],
+    notificationIDs: [],
+    all: true
+  });
 });
 
 test("uninstall result normalizer accepts Rust and legacy ID spellings", () => {

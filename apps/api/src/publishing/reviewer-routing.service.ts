@@ -10,10 +10,16 @@ export class ReviewerRoutingService {
   constructor(private readonly database: DatabaseService) {}
 
   assertClaimedReview(actor: ActorContext, review: ReviewRecord, expectedWorkflowState?: WorkflowState): void {
-    if (expectedWorkflowState && review.workflow_state !== expectedWorkflowState) {
+    if (review.lock_owner_id === actor.userID && !isLockActive(review.lock_expires_at)) {
+      throw new BadRequestException("review_lock_expired");
+    }
+    if (review.workflow_state !== "in_review") {
       throw new BadRequestException("validation_failed");
     }
-    if (review.lock_owner_id !== actor.userID || !isLockActive(review.lock_expires_at)) {
+    if (expectedWorkflowState && review.claimed_from_workflow_state !== expectedWorkflowState) {
+      throw new BadRequestException("validation_failed");
+    }
+    if (review.lock_owner_id !== actor.userID) {
       throw new ForbiddenException("permission_denied");
     }
   }

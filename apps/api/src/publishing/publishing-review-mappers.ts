@@ -19,6 +19,7 @@ export interface ReviewItemSource {
   review_type: ReviewItemDto["reviewType"];
   review_status: ReviewItemDto["reviewStatus"];
   workflow_state: ReviewItemDto["workflowState"];
+  claimed_from_workflow_state: Extract<ReviewItemDto["workflowState"], "manual_precheck" | "pending_review"> | null;
   risk_level: ReviewItemDto["riskLevel"];
   summary: string;
   lock_owner_id: string | null;
