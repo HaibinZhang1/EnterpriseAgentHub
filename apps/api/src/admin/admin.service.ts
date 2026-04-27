@@ -45,7 +45,6 @@ export class AdminService {
     input: {
       username?: string;
       phoneNumber?: string;
-      password?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;

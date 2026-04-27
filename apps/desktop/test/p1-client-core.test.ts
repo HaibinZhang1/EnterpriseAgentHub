@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { guestBootstrap } from "../src/fixtures/p1SeedData.ts";
+import { createAuthClient } from "../src/services/p1Client/auth.ts";
 import { getAPIBase, P1ApiError, requestJSON } from "../src/services/p1Client/core.ts";
 import { createClientUpdatesClient } from "../src/services/p1Client/clientUpdates.ts";
 import { createDesktopSyncClient } from "../src/services/p1Client/desktopSync.ts";
@@ -66,6 +68,291 @@ test("requestJSON uses the configured service URL without rewriting port", async
 
   try {
     await assert.doesNotReject(() => requestJSON("/auth/login", { method: "POST" }));
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("auth client returns initial password challenge without storing a session token", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  const client = createAuthClient();
+  globalThis.fetch = (async (input: string | URL) => {
+    assert.equal(String(input), "http://127.0.0.1:3000/auth/login");
+    return new Response(
+      JSON.stringify({
+        status: "password_change_required",
+        passwordChangeToken: "challenge-token",
+        expiresAt: "2026-04-22T12:15:00.000Z",
+        user: guestBootstrap.user
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }
+    );
+  }) as typeof fetch;
+
+  try {
+    const result = await client.login({
+      phoneNumber: "13800000001",
+      password: "EAgentHub123!",
+      serverURL: "http://127.0.0.1:3000"
+    });
+    assert.equal(result.status, "password_change_required");
+    assert.equal(result.passwordChangeToken, "challenge-token");
+    assert.equal(window.localStorage.getItem("enterprise-agent-hub:p1-token"), null);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("auth client completes initial password change and stores the authenticated token", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  const client = createAuthClient();
+  globalThis.fetch = (async (input: string | URL) => {
+    const url = String(input);
+    if (url === "http://127.0.0.1:3000/auth/complete-initial-password-change") {
+      return new Response(
+        JSON.stringify({
+          status: "authenticated",
+          accessToken: "access-token",
+          tokenType: "Bearer",
+          expiresIn: 3600,
+          expiresAt: "2026-04-22T12:15:00.000Z",
+          user: guestBootstrap.user,
+          menuPermissions: []
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+    assert.equal(url, "http://127.0.0.1:3000/desktop/bootstrap");
+    return new Response(JSON.stringify(guestBootstrap), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  try {
+    const bootstrap = await client.completeInitialPasswordChange({
+      passwordChangeToken: "challenge-token",
+      nextPassword: "BetterPassword123!"
+    });
+    assert.equal(bootstrap.user.username, guestBootstrap.user.username);
+    assert.equal(window.localStorage.getItem("enterprise-agent-hub:p1-token"), "access-token");
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("auth client stores remembered credentials after a successful login", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  const client = createAuthClient();
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "http://127.0.0.1:3000/auth/login") {
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        phoneNumber: "13800000001",
+        password: "BetterPassword123!"
+      });
+      return new Response(
+        JSON.stringify({
+          status: "authenticated",
+          accessToken: "access-token",
+          tokenType: "Bearer",
+          expiresIn: 3600,
+          expiresAt: "2026-04-22T12:15:00.000Z",
+          user: guestBootstrap.user,
+          menuPermissions: []
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+    assert.equal(url, "http://127.0.0.1:3000/desktop/bootstrap");
+    return new Response(JSON.stringify(guestBootstrap), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await client.login({
+      phoneNumber: "13800000001",
+      password: "BetterPassword123!",
+      serverURL: "http://127.0.0.1:3000/",
+      rememberPassword: true,
+      autoLogin: true
+    });
+    assert.equal(result.status, "authenticated");
+    assert.deepEqual(client.storedLoginPreferences(), {
+      rememberPassword: true,
+      autoLogin: true,
+      serverURL: "http://127.0.0.1:3000",
+      phoneNumber: "13800000001",
+      password: "BetterPassword123!"
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("auth client can auto-login with saved credentials", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  const client = createAuthClient();
+  window.localStorage.setItem(
+    "enterprise-agent-hub:p1-login-preferences",
+    JSON.stringify({
+      version: 1,
+      rememberPassword: true,
+      autoLogin: true,
+      serverURL: "http://127.0.0.1:3000",
+      phoneNumber: "13800000001",
+      password: "BetterPassword123!"
+    })
+  );
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "http://127.0.0.1:3000/auth/login") {
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        phoneNumber: "13800000001",
+        password: "BetterPassword123!"
+      });
+      return new Response(
+        JSON.stringify({
+          status: "authenticated",
+          accessToken: "auto-token",
+          tokenType: "Bearer",
+          expiresIn: 3600,
+          expiresAt: "2026-04-22T12:15:00.000Z",
+          user: guestBootstrap.user,
+          menuPermissions: []
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+    assert.equal(url, "http://127.0.0.1:3000/desktop/bootstrap");
+    return new Response(JSON.stringify(guestBootstrap), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await client.loginWithStoredPassword();
+    assert.equal(result?.status, "authenticated");
+    assert.equal(window.localStorage.getItem("enterprise-agent-hub:p1-token"), "auto-token");
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("auth client clears remembered credentials when remember password is off", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  const client = createAuthClient();
+  window.localStorage.setItem(
+    "enterprise-agent-hub:p1-login-preferences",
+    JSON.stringify({
+      version: 1,
+      rememberPassword: true,
+      autoLogin: true,
+      serverURL: "http://127.0.0.1:3000",
+      phoneNumber: "13800000001",
+      password: "BetterPassword123!"
+    })
+  );
+  globalThis.fetch = (async (input: string | URL) => {
+    const url = String(input);
+    if (url === "http://127.0.0.1:3000/auth/login") {
+      return new Response(
+        JSON.stringify({
+          status: "authenticated",
+          accessToken: "access-token",
+          tokenType: "Bearer",
+          expiresIn: 3600,
+          expiresAt: "2026-04-22T12:15:00.000Z",
+          user: guestBootstrap.user,
+          menuPermissions: []
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+    assert.equal(url, "http://127.0.0.1:3000/desktop/bootstrap");
+    return new Response(JSON.stringify(guestBootstrap), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  try {
+    await client.login({
+      phoneNumber: "13800000001",
+      password: "BetterPassword123!",
+      serverURL: "http://127.0.0.1:3000",
+      rememberPassword: false,
+      autoLogin: false
+    });
+    assert.equal(window.localStorage.getItem("enterprise-agent-hub:p1-login-preferences"), null);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreWindow();
+  }
+});
+
+test("auth client refreshes remembered credentials after changing own password", async () => {
+  const restoreWindow = installWindow("http://127.0.0.1:3000");
+  const previousFetch = globalThis.fetch;
+  const client = createAuthClient();
+  window.localStorage.setItem("enterprise-agent-hub:p1-token", "access-token");
+  window.localStorage.setItem(
+    "enterprise-agent-hub:p1-login-preferences",
+    JSON.stringify({
+      version: 1,
+      rememberPassword: true,
+      autoLogin: true,
+      serverURL: "http://127.0.0.1:3000",
+      phoneNumber: "13800000001",
+      password: "OldPassword123!"
+    })
+  );
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    assert.equal(String(input), "http://127.0.0.1:3000/auth/change-password");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      currentPassword: "OldPassword123!",
+      nextPassword: "NewPassword123!"
+    });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  try {
+    await client.changeOwnPassword({
+      currentPassword: "OldPassword123!",
+      nextPassword: "NewPassword123!"
+    });
+    assert.equal(client.storedLoginPreferences().password, "NewPassword123!");
   } finally {
     globalThis.fetch = previousFetch;
     restoreWindow();

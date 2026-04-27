@@ -43,16 +43,20 @@ test('Desktop client defaults to the real API surface and does not auto-fallback
   assert.doesNotMatch(p1Client, /fixtures\/p1SeedData/);
   assert.match(p1ClientCore, /VITE_DESKTOP_API_BASE_URL/);
   assert.match(p1ClientCore, /requireAPIBase/);
+  assert.match(p1ClientCore, /p1-login-preferences/);
   assert.match(sharedContracts, /authChangePassword: "\/auth\/change-password"/);
+  assert.match(sharedContracts, /authCompleteInitialPasswordChange: "\/auth\/complete-initial-password-change"/);
   assert.match(p1ClientCore, /authorization/);
   assert.match(p1ClientAuth, /P1_API_ROUTES\.authLogin/);
   assert.match(p1ClientAuth, /P1_API_ROUTES\.authChangePassword/);
+  assert.match(p1ClientAuth, /P1_API_ROUTES\.authCompleteInitialPasswordChange/);
+  assert.match(p1ClientAuth, /loginWithStoredPassword/);
   assert.match(p1ClientAuth, /P1_API_ROUTES\.desktopBootstrap/);
 });
 
 test('Tauri bridge only permits local command mocks behind an explicit env flag', () => {
   assert.match(tauriRuntime, /VITE_P1_ALLOW_TAURI_MOCKS/);
-  assert.match(tauriRuntime, /import\.meta\.env\.DEV && import\.meta\.env\.VITE_P1_ALLOW_TAURI_MOCKS === "true"/);
+  assert.match(tauriRuntime, /Boolean\(importMetaEnv\?\.DEV\) && importMetaEnv\?\.VITE_P1_ALLOW_TAURI_MOCKS === "true"/);
   assert.match(tauriRuntime, /Tauri runtime is unavailable/);
   assert.match(tauriRuntime, /if \(allowTauriMocks\) \{/);
   assert.match(tauriRuntime, /throw new Error\("Tauri mock dispatcher must be handled by the caller"\)/);
@@ -71,6 +75,7 @@ test('Desktop login defaults do not hardcode demo credentials in the product UI'
 test('Tauri packaging config exposes Windows installer intent and command registration', () => {
   assert.equal(tauriConfig.identifier, 'com.enterpriseagenthub.desktop');
   assert.deepEqual(tauriConfig.bundle.targets, ['nsis']);
+  assert.deepEqual(tauriConfig.bundle.windows.webviewInstallMode, { type: 'offlineInstaller' });
   assert.match(desktopPackage.scripts['tauri:build:windows'], /x86_64-pc-windows-msvc/);
   assert.match(cargoToml, /tauri =/);
   for (const command of ['get_local_bootstrap', 'install_skill_package', 'enable_skill', 'disable_skill', 'uninstall_skill', 'save_project_config', 'mark_offline_events_synced']) {
@@ -117,6 +122,10 @@ test('React desktop app is split into shell, sections, overlays, and UI state co
   assert.match(desktopOverlaysTsx, /ConnectionStatusModal/);
   assert.match(desktopOverlaysTsx, /当前密码/);
   assert.match(desktopOverlaysTsx, /保存新密码/);
+  assert.match(desktopOverlaysTsx, /记住密码/);
+  assert.match(desktopOverlaysTsx, /自动登录/);
+  assert.match(desktopOverlaysTsx, /首次登录修改密码/);
+  assert.match(desktopOverlaysTsx, /initial-password-change/);
   assert.match(desktopOverlaysTsx, /ToolEditorModal/);
   assert.match(desktopUiState, /buildPublishPrecheck/);
 });

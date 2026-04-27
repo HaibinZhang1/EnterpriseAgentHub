@@ -212,6 +212,7 @@ export function useP1Workspace() {
     clearProgress: market.clearProgress,
     authError: auth.authError,
     login: sessionFlow.login,
+    completeInitialPasswordChange: sessionFlow.completeInitialPasswordChange,
     logout: sessionFlow.logout,
     changeOwnPassword,
     refreshBootstrap: sessionFlow.refreshBootstrap,

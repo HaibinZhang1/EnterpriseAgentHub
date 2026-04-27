@@ -1,8 +1,29 @@
 const API_BASE_STORAGE_KEY = "enterprise-agent-hub:p1-api-base";
 const TOKEN_STORAGE_KEY = "enterprise-agent-hub:p1-token";
+const LOGIN_PREFERENCES_STORAGE_KEY = "enterprise-agent-hub:p1-login-preferences";
 const DEFAULT_API_BASE =
   (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_DESKTOP_API_BASE_URL ?? "";
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
+
+export interface StoredLoginPreferences {
+  readonly rememberPassword: boolean;
+  readonly autoLogin: boolean;
+  readonly serverURL: string;
+  readonly phoneNumber: string;
+  readonly password: string;
+}
+
+interface StoredLoginPreferencesRecord extends StoredLoginPreferences {
+  readonly version: 1;
+}
+
+const emptyLoginPreferences: StoredLoginPreferences = {
+  rememberPassword: false,
+  autoLogin: false,
+  serverURL: "",
+  phoneNumber: "",
+  password: ""
+};
 
 export class P1ApiError extends Error {
   readonly status: number;
@@ -49,6 +70,59 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+export function getStoredLoginPreferences(): StoredLoginPreferences {
+  const raw = window.localStorage.getItem(LOGIN_PREFERENCES_STORAGE_KEY);
+  if (!raw) return emptyLoginPreferences;
+  try {
+    const value = JSON.parse(raw) as Partial<StoredLoginPreferencesRecord>;
+    if (value.version !== 1 || !value.rememberPassword) {
+      return emptyLoginPreferences;
+    }
+    const serverURL = typeof value.serverURL === "string" ? value.serverURL : "";
+    const phoneNumber = typeof value.phoneNumber === "string" ? value.phoneNumber : "";
+    const password = typeof value.password === "string" ? value.password : "";
+    if (!serverURL.trim() || !phoneNumber.trim() || !password) {
+      return emptyLoginPreferences;
+    }
+    return {
+      rememberPassword: true,
+      autoLogin: value.autoLogin === true,
+      serverURL: normalizeBaseURL(serverURL),
+      phoneNumber: phoneNumber.trim(),
+      password
+    };
+  } catch {
+    window.localStorage.removeItem(LOGIN_PREFERENCES_STORAGE_KEY);
+    return emptyLoginPreferences;
+  }
+}
+
+export function setStoredLoginPreferences(input: {
+  serverURL: string;
+  phoneNumber: string;
+  password: string;
+  rememberPassword?: boolean;
+  autoLogin?: boolean;
+}): void {
+  if (!input.rememberPassword) {
+    clearStoredLoginPreferences();
+    return;
+  }
+  const nextPreferences: StoredLoginPreferencesRecord = {
+    version: 1,
+    rememberPassword: true,
+    autoLogin: input.autoLogin === true,
+    serverURL: normalizeBaseURL(input.serverURL),
+    phoneNumber: input.phoneNumber.trim(),
+    password: input.password
+  };
+  window.localStorage.setItem(LOGIN_PREFERENCES_STORAGE_KEY, JSON.stringify(nextPreferences));
+}
+
+export function clearStoredLoginPreferences(): void {
+  window.localStorage.removeItem(LOGIN_PREFERENCES_STORAGE_KEY);
 }
 
 export async function requestJSON<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {

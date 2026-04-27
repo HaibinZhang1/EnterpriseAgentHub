@@ -19,7 +19,9 @@ import type {
 import { P1_API_ROUTES } from "@enterprise-agent-hub/shared-contracts";
 import { createAdminClient } from "./p1Client/admin.ts";
 import { createAuthClient } from "./p1Client/auth.ts";
+import type { InitialPasswordChangeInput, LoginInput, LoginResult } from "./p1Client/auth.ts";
 import { P1ApiError } from "./p1Client/core.ts";
+import type { StoredLoginPreferences } from "./p1Client/core.ts";
 import {
   CLIENT_UPDATE_ROUTES,
   createClientUpdatesClient,
@@ -59,6 +61,7 @@ export {
 export const REMOTE_WRITE_BLOCK_MESSAGE = "当前客户端版本过低，请先升级后继续。";
 export const REMOTE_WRITE_ALLOWLIST = [
   P1_API_ROUTES.authLogin,
+  P1_API_ROUTES.authCompleteInitialPasswordChange,
   P1_API_ROUTES.authLogout,
   P1_API_ROUTES.desktopBootstrap,
   CLIENT_UPDATE_ROUTES.check,
@@ -108,9 +111,12 @@ export interface P1Client {
   hasStoredSession(): boolean;
   clearStoredSession(): void;
   currentAPIBase(): string;
-  login(input: { phoneNumber: string; password: string; serverURL: string }): Promise<BootstrapContext>;
+  storedLoginPreferences(): StoredLoginPreferences;
+  loginWithStoredPassword(): Promise<LoginResult | null>;
+  login(input: LoginInput): Promise<LoginResult>;
   logout(): Promise<void>;
   changeOwnPassword(input: { currentPassword: string; nextPassword: string }): Promise<void>;
+  completeInitialPasswordChange(input: InitialPasswordChangeInput): Promise<BootstrapContext>;
   bootstrap(): Promise<BootstrapContext>;
   listSkills(filters: MarketFilters): Promise<SkillSummary[]>;
   listSkillLeaderboards(): Promise<SkillLeaderboardsResponse>;
@@ -125,7 +131,7 @@ export interface P1Client {
   updateDepartment(departmentID: string, input: { name: string }): Promise<DepartmentNode[]>;
   deleteDepartment(departmentID: string): Promise<void>;
   listAdminUsers(): Promise<AdminUser[]>;
-  createAdminUser(input: { username: string; phoneNumber: string; password: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]>;
+  createAdminUser(input: { username: string; phoneNumber: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]>;
   updateAdminUser(phoneNumber: string, input: { username?: string; phoneNumber?: string; departmentID?: string; role?: "normal_user" | "admin"; adminLevel?: number | null }): Promise<AdminUser[]>;
   changeAdminUserPassword(phoneNumber: string, password: string): Promise<AdminUser[]>;
   freezeAdminUser(phoneNumber: string): Promise<AdminUser[]>;
@@ -174,9 +180,12 @@ export const p1Client: P1Client = {
   hasStoredSession: authClient.hasStoredSession,
   clearStoredSession: authClient.clearStoredSession,
   currentAPIBase: authClient.currentAPIBase,
+  storedLoginPreferences: authClient.storedLoginPreferences,
+  loginWithStoredPassword: guardRemoteWrite(P1_API_ROUTES.authLogin, authClient.loginWithStoredPassword),
   login: guardRemoteWrite(P1_API_ROUTES.authLogin, authClient.login),
   logout: guardRemoteWrite(P1_API_ROUTES.authLogout, authClient.logout),
   changeOwnPassword: guardRemoteWrite(P1_API_ROUTES.authChangePassword, authClient.changeOwnPassword),
+  completeInitialPasswordChange: guardRemoteWrite(P1_API_ROUTES.authCompleteInitialPasswordChange, authClient.completeInitialPasswordChange),
   bootstrap: authClient.bootstrap,
   listSkills: marketClient.listSkills,
   listSkillLeaderboards: marketClient.listSkillLeaderboards,

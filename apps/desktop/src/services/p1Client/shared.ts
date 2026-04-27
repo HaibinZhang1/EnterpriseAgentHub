@@ -13,13 +13,24 @@ export interface ApiPage<T> {
   items: T[];
 }
 
-export interface ApiLoginResponse {
+export interface ApiAuthenticatedLoginResponse {
+  status: "authenticated";
   accessToken: string;
   tokenType: "Bearer";
   expiresIn: number;
   expiresAt: string;
+  user: BootstrapContext["user"];
   menuPermissions: MenuPermission[];
 }
+
+export interface ApiPasswordChangeRequiredLoginResponse {
+  status: "password_change_required";
+  passwordChangeToken: string;
+  expiresAt: string;
+  user: BootstrapContext["user"];
+}
+
+export type ApiLoginResponse = ApiAuthenticatedLoginResponse | ApiPasswordChangeRequiredLoginResponse;
 
 export interface ApiBootstrapResponse extends Omit<BootstrapContext, "counts"> {
   user: BootstrapContext["user"] & { displayName?: string; userID?: string };

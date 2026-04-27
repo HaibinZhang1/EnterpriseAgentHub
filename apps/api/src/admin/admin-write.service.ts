@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
 import { normalizePhoneNumber } from '../auth/phone-number';
-import { hashPassword, validatePasswordStrength } from '../auth/password';
+import { INITIAL_PASSWORD, hashPassword, validatePasswordStrength } from '../auth/password';
 import { AdminRepository } from './admin.repository';
 import {
   assertAdminActor,
@@ -90,7 +90,6 @@ export class AdminWriteService {
     input: {
       username?: string;
       phoneNumber?: string;
-      password?: string;
       departmentID?: string;
       role?: 'normal_user' | 'admin';
       adminLevel?: number | null;
@@ -99,13 +98,8 @@ export class AdminWriteService {
     const actor = assertAdminActor(await this.repository.loadActor(userID));
     const username = input.username?.trim();
     const phoneNumber = normalizePhoneNumber(input.phoneNumber);
-    const password = input.password?.trim();
-    if (!username || !password || !input.departmentID || !input.role) {
+    if (!username || !input.departmentID || !input.role) {
       throw new BadRequestException('validation_failed');
-    }
-    const validationMessage = validatePasswordStrength(password);
-    if (validationMessage) {
-      throw new BadRequestException(validationMessage);
     }
     if (await this.repository.phoneNumberExists(phoneNumber)) {
       throw new BadRequestException('phone_number_already_exists');
@@ -124,7 +118,7 @@ export class AdminWriteService {
       userID: `u_${randomBytes(6).toString('hex')}`,
       username,
       phoneNumber,
-      passwordHash: hashPassword(password),
+      passwordHash: hashPassword(INITIAL_PASSWORD),
       departmentID: department.id,
       role: normalizedRole,
       adminLevel: normalizedAdminLevel,

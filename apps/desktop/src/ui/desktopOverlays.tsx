@@ -23,7 +23,7 @@ import { openExternalURL } from "../services/externalLinks.ts";
 import type { P1WorkspaceState } from "../state/useP1Workspace.ts";
 import { buildPublishPrecheck } from "../state/ui/publishPrecheck.ts";
 import { connectedServiceURL, ENTERPRISE_AGENT_HUB_GITHUB_URL } from "../state/ui/aboutInfo.ts";
-import { downloadAuthenticatedFile } from "../services/p1Client.ts";
+import { downloadAuthenticatedFile, p1Client } from "../services/p1Client.ts";
 import { defaultProjectSkillsPath, defaultToolConfigPath, defaultToolSkillsPath, previewCentralStorePath } from "../utils/platformPaths.ts";
 import { passwordPolicyHint, validatePasswordPolicy } from "../utils/passwordPolicy.ts";
 import {
@@ -143,10 +143,13 @@ export function progressEyebrow(operation: OperationProgress["operation"]): stri
 }
 
 function defaultLoginForm(apiBaseURL: string) {
+  const savedPreferences = p1Client.storedLoginPreferences();
   return {
-    serverURL: apiBaseURL,
-    phoneNumber: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PHONE_NUMBER ?? "" : "",
-    password: import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PASSWORD ?? "" : ""
+    serverURL: savedPreferences.serverURL || apiBaseURL,
+    phoneNumber: savedPreferences.phoneNumber || (import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PHONE_NUMBER ?? "" : ""),
+    password: savedPreferences.password || (import.meta.env.DEV ? import.meta.env.VITE_P1_DEV_LOGIN_PASSWORD ?? "" : ""),
+    rememberPassword: savedPreferences.rememberPassword,
+    autoLogin: savedPreferences.autoLogin
   };
 }
 
@@ -166,16 +169,31 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
   const [form, setForm] = useState(() => defaultLoginForm(workspace.apiBaseURL));
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [passwordChallenge, setPasswordChallenge] = useState<{ passwordChangeToken: string; expiresAt: string; username: string; phoneNumber: string } | null>(null);
+  const [initialPasswordForm, setInitialPasswordForm] = useState({ nextPassword: "", confirmPassword: "" });
+  const [initialPasswordError, setInitialPasswordError] = useState<string | null>(null);
   const visibleError = formError ?? workspace.authError;
+  const initialPasswordValidation = initialPasswordForm.nextPassword.trim() ? validatePasswordPolicy(initialPasswordForm.nextPassword) : null;
+  const initialPasswordReused = initialPasswordForm.nextPassword.trim() === "EAgentHub123!";
+  const initialPasswordMismatch =
+    initialPasswordForm.confirmPassword.length > 0 && initialPasswordForm.nextPassword !== initialPasswordForm.confirmPassword;
+  const canSubmitInitialPassword = Boolean(
+    passwordChallenge &&
+    initialPasswordForm.nextPassword.trim() &&
+    initialPasswordForm.confirmPassword.trim() &&
+    !initialPasswordValidation &&
+    !initialPasswordReused &&
+    !initialPasswordMismatch
+  );
 
   useEffect(() => {
     if (!workspace.loginModalOpen) return;
-    setForm((current) => ({
-      ...current,
-      serverURL: workspace.apiBaseURL
-    }));
+    setForm(defaultLoginForm(workspace.apiBaseURL));
     setSubmitting(false);
     setFormError(null);
+    setPasswordChallenge(null);
+    setInitialPasswordForm({ nextPassword: "", confirmPassword: "" });
+    setInitialPasswordError(null);
   }, [workspace.apiBaseURL, workspace.loginModalOpen]);
 
   if (!workspace.loginModalOpen) return null;
@@ -186,6 +204,16 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
     if (event.target.name === "phoneNumber" || event.target.name === "password") {
       setFormError(null);
     }
+  }
+
+  function updateLoginPreference(event: ChangeEvent<HTMLInputElement>) {
+    const { checked, name } = event.target;
+    setForm((current) => {
+      if (name === "autoLogin") {
+        return { ...current, autoLogin: checked, rememberPassword: checked ? true : current.rememberPassword };
+      }
+      return { ...current, rememberPassword: checked, autoLogin: checked ? current.autoLogin : false };
+    });
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -203,10 +231,112 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
     setFormError(null);
     setSubmitting(true);
     try {
-      await workspace.login(form);
+      const result = await workspace.login(form);
+      if (result.status === "password_change_required") {
+        setPasswordChallenge({
+          passwordChangeToken: result.passwordChangeToken,
+          expiresAt: result.expiresAt,
+          username: result.user.username,
+          phoneNumber: result.user.phoneNumber
+        });
+        setInitialPasswordForm({ nextPassword: "", confirmPassword: "" });
+        setInitialPasswordError(null);
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function submitInitialPasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!passwordChallenge || !canSubmitInitialPassword || submitting) return;
+    if (initialPasswordReused) {
+      setInitialPasswordError("新密码不能与初始密码相同。");
+      return;
+    }
+    setInitialPasswordError(null);
+    setSubmitting(true);
+    try {
+      const result = await workspace.completeInitialPasswordChange({
+        passwordChangeToken: passwordChallenge.passwordChangeToken,
+        nextPassword: initialPasswordForm.nextPassword.trim(),
+        phoneNumber: form.phoneNumber,
+        serverURL: form.serverURL,
+        rememberPassword: form.rememberPassword,
+        autoLogin: form.autoLogin
+      });
+      if (!result.ok) {
+        setInitialPasswordError(result.error);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (passwordChallenge) {
+    const initialPasswordVisibleError =
+      initialPasswordError ??
+      workspace.authError ??
+      (initialPasswordMismatch
+        ? "两次输入的新密码不一致。"
+        : initialPasswordReused
+          ? "新密码不能与初始密码相同。"
+          : initialPasswordValidation);
+    return (
+      <ModalFrame title="首次登录修改密码" eyebrow="账号安全" onClose={() => workspace.setLoginModalOpen(false)} narrow>
+        <div data-testid="initial-password-change">
+          <div className="overlay-intro">
+            <div className="detail-symbol-card overlay-symbol-card">
+              <span className="overlay-symbol-mark icon-tone-pine">EA</span>
+            </div>
+            <div>
+              <p className="overlay-intro-title">初始密码仅用于首次验证</p>
+              <p className="overlay-intro-copy">{passwordChallenge.username}（{passwordChallenge.phoneNumber}）需要设置新密码后才能进入工作台。</p>
+            </div>
+          </div>
+          <form className="form-stack" onSubmit={submitInitialPasswordChange} noValidate>
+            <label className="field">
+              <span>新密码</span>
+              <input
+                data-testid="initial-password-next"
+                type="password"
+                value={initialPasswordForm.nextPassword}
+                autoComplete="new-password"
+                onChange={(event) => {
+                  setInitialPasswordForm((current) => ({ ...current, nextPassword: event.target.value }));
+                  setInitialPasswordError(null);
+                }}
+              />
+            </label>
+            <label className="field">
+              <span>确认新密码</span>
+              <input
+                data-testid="initial-password-confirm"
+                type="password"
+                value={initialPasswordForm.confirmPassword}
+                autoComplete="new-password"
+                onChange={(event) => {
+                  setInitialPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }));
+                  setInitialPasswordError(null);
+                }}
+              />
+            </label>
+            <small className={initialPasswordVisibleError ? "field-hint warning" : "field-hint"}>
+              {initialPasswordVisibleError ?? passwordPolicyHint}
+            </small>
+            <div className="inline-actions wrap">
+              <button className="btn btn-primary" type="submit" disabled={!canSubmitInitialPassword || submitting}>
+                <LogIn size={14} />
+                {submitting ? "正在保存..." : "保存并登录"}
+              </button>
+              <button className="btn" type="button" onClick={() => workspace.setLoginModalOpen(false)} disabled={submitting}>
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      </ModalFrame>
+    );
   }
 
   return (
@@ -269,6 +399,28 @@ function LoginModal({ workspace, ui }: { workspace: P1WorkspaceState; ui: Deskto
               onChange={updateField}
             />
           </label>
+          <div className="stack-list compact">
+            <label className="toggle-row compact">
+              <span>记住密码</span>
+              <input
+                data-testid="login-remember-password"
+                name="rememberPassword"
+                type="checkbox"
+                checked={form.rememberPassword}
+                onChange={updateLoginPreference}
+              />
+            </label>
+            <label className="toggle-row compact">
+              <span>自动登录</span>
+              <input
+                data-testid="login-auto-login"
+                name="autoLogin"
+                type="checkbox"
+                checked={form.autoLogin}
+                onChange={updateLoginPreference}
+              />
+            </label>
+          </div>
           {visibleError ? (
             <div className="callout warning">
               {formError ? <AlertTriangle size={16} /> : <WifiOff size={16} />}

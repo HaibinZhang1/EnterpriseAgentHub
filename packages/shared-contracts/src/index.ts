@@ -424,13 +424,28 @@ export interface LoginRequest {
   readonly password: string;
 }
 
-export interface LoginResponse {
+export interface AuthenticatedLoginResponse {
+  readonly status: "authenticated";
   readonly accessToken: string;
   readonly tokenType: "Bearer";
   readonly user: CurrentUser;
   readonly expiresAt: ISODateTimeString;
   readonly expiresIn: number;
   readonly menuPermissions: readonly NavigationItem[];
+}
+
+export interface PasswordChangeRequiredLoginResponse {
+  readonly status: "password_change_required";
+  readonly passwordChangeToken: string;
+  readonly expiresAt: ISODateTimeString;
+  readonly user: CurrentUser;
+}
+
+export type LoginResponse = AuthenticatedLoginResponse | PasswordChangeRequiredLoginResponse;
+
+export interface CompleteInitialPasswordChangeRequest {
+  readonly passwordChangeToken: string;
+  readonly nextPassword: string;
 }
 
 export interface SkillSummary {
@@ -664,6 +679,7 @@ export interface AdminUser {
   readonly role: "normal_user" | "admin";
   readonly adminLevel: number | null;
   readonly status: "active" | "frozen" | "deleted";
+  readonly passwordMustChange: boolean;
   readonly lastLoginAt: ISODateTimeString | null;
   readonly publishedSkillCount: number;
   readonly starCount: number;
@@ -1188,6 +1204,7 @@ export const P1_API_ROUTES = {
   authLogin: "/auth/login",
   authLogout: "/auth/logout",
   authChangePassword: "/auth/change-password",
+  authCompleteInitialPasswordChange: "/auth/complete-initial-password-change",
   desktopBootstrap: "/desktop/bootstrap",
   desktopLocalEvents: "/desktop/local-events",
   clientUpdatesCheck: "/client-updates/check",

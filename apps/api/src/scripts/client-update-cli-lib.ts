@@ -85,12 +85,18 @@ export async function loginAdmin(input: {
   adminPhone: string;
   password: string;
 }): Promise<string> {
-  const response = await requestJSON<{ accessToken: string }>('/auth/login', {
+  const response = await requestJSON<{ status?: string; accessToken?: string }>('/auth/login', {
     serverURL: input.serverURL,
     method: 'POST',
     body: JSON.stringify({ phoneNumber: input.adminPhone, password: input.password }),
     headers: { 'content-type': 'application/json' },
   });
+  if (response.status === 'password_change_required') {
+    throw new Error('Admin password must be changed before using client update CLI');
+  }
+  if (!response.accessToken) {
+    throw new Error('Admin login did not return an access token');
+  }
   return response.accessToken;
 }
 

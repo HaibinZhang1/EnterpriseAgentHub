@@ -70,10 +70,25 @@ function installFetchMock() {
 
     if (path === "/auth/login" && method === "POST") {
       return jsonResponse({
+        status: "authenticated",
         accessToken: "token-456",
         tokenType: "Bearer",
         expiresIn: 3600,
-        expiresAt: "2026-04-22T12:00:00.000Z"
+        expiresAt: "2026-04-22T12:00:00.000Z",
+        user: guestBootstrap.user,
+        menuPermissions: []
+      });
+    }
+
+    if (path === "/auth/complete-initial-password-change" && method === "POST") {
+      return jsonResponse({
+        status: "authenticated",
+        accessToken: "token-789",
+        tokenType: "Bearer",
+        expiresIn: 3600,
+        expiresAt: "2026-04-22T12:00:00.000Z",
+        user: guestBootstrap.user,
+        menuPermissions: []
       });
     }
 
@@ -164,6 +179,7 @@ afterEach(() => {
 test("remote-write allowlist stays verbatim while the desktop write guard is active", async () => {
   assert.deepEqual([...REMOTE_WRITE_ALLOWLIST], [
     "/auth/login",
+    "/auth/complete-initial-password-change",
     "/auth/logout",
     "/desktop/bootstrap",
     "/client-updates/check",
@@ -181,6 +197,7 @@ test("remote-write allowlist stays verbatim while the desktop write guard is act
       serverURL: API_BASE
     })
   );
+  await assert.doesNotReject(() => p1Client.completeInitialPasswordChange({ passwordChangeToken: "challenge-token", nextPassword: "BetterPassword123!" }));
   await assert.doesNotReject(() => p1Client.logout());
   await assert.doesNotReject(() => p1Client.markNotificationsRead(["notify-1"]));
   await assert.doesNotReject(() => p1Client.checkClientUpdate({ currentVersion: "1.5.0", deviceID: "device-test-001" }));
@@ -188,6 +205,7 @@ test("remote-write allowlist stays verbatim while the desktop write guard is act
   await assert.doesNotReject(() => p1Client.reportClientUpdateEvent({ releaseID: "rel_01", eventType: "download_started", deviceID: "device-test-001", fromVersion: "1.5.0", toVersion: "1.6.0" }));
 
   assert.ok(fetchCalls.some((call) => call.url === "/auth/login" && call.method === "POST"));
+  assert.ok(fetchCalls.some((call) => call.url === "/auth/complete-initial-password-change" && call.method === "POST"));
   assert.ok(fetchCalls.some((call) => call.url === "/auth/logout" && call.method === "POST"));
   assert.ok(fetchCalls.some((call) => call.url === "/notifications/mark-read" && call.method === "POST"));
   assert.ok(fetchCalls.some((call) => call.url === "/client-updates/check" && call.method === "POST"));

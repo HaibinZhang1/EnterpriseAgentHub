@@ -20,7 +20,8 @@ test('client update CLI parses long flags and uses auth/login for admin auth reu
 
   assert.equal(args['server-url'], 'http://127.0.0.1:3000');
   assert.equal(args['publish-now'], 'false');
-  assert.match(cliLib, /requestJSON<\{ accessToken: string \}>\('\/auth\/login'/);
+  assert.match(cliLib, /requestJSON<\{ status\?: string; accessToken\?: string \}>\('\/auth\/login'/);
+  assert.match(cliLib, /password_change_required/);
   assert.match(publishScript, /\/admin\/client-updates\/releases/);
   assert.match(publishScript, /uploadArtifact\(/);
 });

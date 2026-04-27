@@ -46,6 +46,7 @@ export function toAdminUser(row: UserRow): AdminUserDto {
     role: row.role,
     adminLevel: row.admin_level,
     status: row.status,
+    passwordMustChange: row.password_must_change,
     lastLoginAt: toIsoDateTime(row.last_login_at),
     publishedSkillCount: Number(row.published_skill_count),
     starCount: Number(row.star_count),

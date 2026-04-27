@@ -190,12 +190,15 @@ export function useWorkspaceSessionFlow(input: {
   );
 
   const login = useCallback(
-    async (inputValue: { phoneNumber: string; password: string; serverURL: string }) => {
+    async (inputValue: Parameters<typeof p1Client.login>[0]) => {
       auth.setAuthError(null);
       try {
         const localBootstrap = localSync.localBootstrapRef.current ?? (await localSync.refreshLocalBootstrap());
         localSync.localBootstrapRef.current = localBootstrap;
-        await p1Client.login(inputValue);
+        const result = await p1Client.login(inputValue);
+        if (result.status === "password_change_required") {
+          return result;
+        }
         await hydrateAuthenticatedState(localBootstrap);
         auth.setLoginModalOpen(false);
         const pending = auth.consumePendingLogin("home");
@@ -203,8 +206,41 @@ export function useWorkspaceSessionFlow(input: {
         if (pending.action) {
           await pending.action();
         }
+        return { status: "authenticated" as const };
       } catch (error) {
         auth.setAuthError(error instanceof Error ? error.message : "登录失败");
+        return { status: "failed" as const };
+      }
+    },
+    [
+      auth.consumePendingLogin,
+      auth.setActivePageState,
+      auth.setAuthError,
+      auth.setLoginModalOpen,
+      hydrateAuthenticatedState,
+      localSync.localBootstrapRef,
+      localSync.refreshLocalBootstrap
+    ]
+  );
+
+  const completeInitialPasswordChange = useCallback(
+    async (inputValue: Parameters<typeof p1Client.completeInitialPasswordChange>[0]) => {
+      auth.setAuthError(null);
+      try {
+        const localBootstrap = localSync.localBootstrapRef.current ?? (await localSync.refreshLocalBootstrap());
+        localSync.localBootstrapRef.current = localBootstrap;
+        await p1Client.completeInitialPasswordChange(inputValue);
+        await hydrateAuthenticatedState(localBootstrap);
+        auth.setLoginModalOpen(false);
+        const pending = auth.consumePendingLogin("home");
+        auth.setActivePageState(pending.page);
+        if (pending.action) {
+          await pending.action();
+        }
+        return { ok: true as const };
+      } catch (error) {
+        auth.setAuthError(error instanceof Error ? error.message : "首次登录修改密码失败");
+        return { ok: false as const, error: error instanceof Error ? error.message : "首次登录修改密码失败" };
       }
     },
     [
@@ -240,6 +276,7 @@ export function useWorkspaceSessionFlow(input: {
 
   return {
     handleRemoteError,
+    completeInitialPasswordChange,
     hydrateAuthenticatedState,
     login,
     logout,

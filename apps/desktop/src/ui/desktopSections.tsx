@@ -561,20 +561,17 @@ function HomeHero({ workspace, ui }: SectionProps) {
     }
   ];
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    ui.openCommunityPane("skills");
-  }
-
   return (
     <section className="home-hero-shell">
       <section className="hero-surface hero-feature-home">
         <div className="hero-copy hero-copy-home">
           <div className="home-copy-block">
-            <h1>Agent 探索</h1>
-            <p>输入目标，接上工作区、本地文件和已安装 Skills。</p>
+            <h1 className="home-title">
+              <span className="home-title-text">Agent 探索</span>
+              <span className="home-title-status">（功能开发中）</span>
+            </h1>
           </div>
-          <form className="prompt-composer" onSubmit={submit}>
+          <form className="prompt-composer">
             <div className="prompt-composer-shell">
               <textarea
                 name="query"
@@ -593,10 +590,10 @@ function HomeHero({ workspace, ui }: SectionProps) {
                   </button>
                 </div>
                 <div className="prompt-toolbar-right">
-                  <button className="composer-text-button" type="button">GPT-5.4</button>
+                  <button className="composer-text-button" type="button">GLM-5.1</button>
                   <button className="composer-text-button" type="button">超高</button>
                   <button className="composer-icon-button muted" type="button" aria-label="语音">◌</button>
-                  <button className="composer-submit" type="submit" aria-label="发送">↑</button>
+                  <button className="composer-submit" type="button" aria-label="发送">↑</button>
                 </div>
               </div>
             </div>
@@ -919,6 +916,7 @@ function CommunityPublisherWorkspace({
     (draft.scope !== "selected_departments" || draft.selectedDepartmentIDs.length > 0);
 	  const canSubmitDraft = draft.submissionType === "permission_change" ? canSubmitPermissionChange && !duplicatePublishedSlug : publishPrecheck.canSubmit && !duplicatePublishedSlug;
 	  const folderInputProps = { webkitdirectory: "", directory: "" } as { [key: string]: string };
+	  const showSlugValidation = submitAttempted || draft.skillID.trim().length > 0;
 	  const visiblePrecheckIssues = [
 	    ...(duplicatePublishedSlug
 	      ? [{
@@ -928,7 +926,11 @@ function CommunityPublisherWorkspace({
 	          message: "该 Slug 已有已发布 Skill，请使用更新发布或更换 Slug。"
 	        }]
 	      : []),
-	    ...publishPrecheck.items.filter((item) => item.status === "warn")
+	    ...publishPrecheck.items.filter((item) => {
+	      if (item.status !== "warn") return false;
+	      if (item.id === "slug" && !submitAttempted && draft.skillID.trim().length === 0) return false;
+	      return true;
+	    })
 	  ];
 	  const shouldShowPrecheckIssues = visiblePrecheckIssues.length > 0 && (submitAttempted || draft.files.length > 0 || draft.skillID.trim().length > 0);
 
@@ -1206,16 +1208,18 @@ function CommunityPublisherWorkspace({
                   <div className="field-stack">
                     <label className="publish-label">Slug <span className="required-mark">*</span></label>
                     <input
-                      className={draft.skillID.trim() && !slugValidation.valid ? "field-invalid" : ""}
+                      className={showSlugValidation && !slugValidation.valid ? "field-invalid" : ""}
                       data-testid="publish-skill-id"
                       value={draft.skillID}
                       placeholder="Skill 的唯一标识符，仅允许小写字母、数字和连字符"
                       disabled={draft.submissionType !== "publish"}
-                      aria-invalid={draft.skillID.trim() ? !slugValidation.valid : undefined}
+                      aria-invalid={showSlugValidation ? !slugValidation.valid : undefined}
                       onBlur={() => setDraft((current) => ({ ...current, skillID: current.skillID.trim() }))}
                       onChange={(event) => setDraft((current) => ({ ...current, skillID: event.target.value }))}
                     />
-                    <small className={slugValidation.valid ? "field-hint success" : "field-hint warning"}>{slugValidation.message}</small>
+                    {showSlugValidation ? (
+                      <small className={slugValidation.valid ? "field-hint success" : "field-hint warning"}>{slugValidation.message}</small>
+                    ) : null}
                   </div>
 
                   <div className="field-stack">
@@ -1236,13 +1240,13 @@ function CommunityPublisherWorkspace({
               </section>
             </div>
 
-            <aside className="publish-secondary-column" aria-label="发布范围与分类">
+            <div className="publish-secondary-column" aria-label="发布范围与分类">
               <section className="publish-form-section" aria-labelledby="publish-scope-heading">
                 <div className="publish-section-head">
                   <h2 id="publish-scope-heading">公开与授权</h2>
                   <p>控制谁能看到、谁能安装。</p>
                 </div>
-                <div className="publish-scope-stack">
+                <div className="publish-scope-grid">
                   <div className="field-stack">
                     <label className="publish-label">公开级别 <span className="required-mark">*</span></label>
                     <div className="publish-select-shell">
@@ -1276,7 +1280,7 @@ function CommunityPublisherWorkspace({
                   </div>
 
                   {draft.scope === "selected_departments" ? (
-                    <div className="field-stack">
+                    <div className="field-stack publish-field-wide">
                       <label className="publish-label">指定部门</label>
                       <select
                         multiple
@@ -1301,7 +1305,7 @@ function CommunityPublisherWorkspace({
                   <p>用于社区筛选、搜索和安装前判断。</p>
                 </div>
                 <div className="publish-meta-grid">
-                  <label className="field-stack">
+                  <label className="field-stack publish-meta-wide">
                     <span className="publish-label">分类</span>
                     <select data-testid="publish-category" value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}>
                       <option value="">请选择分类</option>
@@ -1310,7 +1314,7 @@ function CommunityPublisherWorkspace({
                       ))}
                     </select>
                   </label>
-                  <div className="field-stack publish-tag-select">
+                  <div className="field-stack publish-tag-select publish-meta-wide">
                     <span className="publish-label">标签</span>
                     <div className="tag-row compact" data-testid="publish-tags" aria-label="发布标签">
                       {SKILL_TAGS.map((tag) => {
@@ -1348,7 +1352,7 @@ function CommunityPublisherWorkspace({
                   </label>
                 </div>
               </section>
-            </aside>
+            </div>
           </div>
 
 	          {shouldShowPrecheckIssues ? (
@@ -2930,7 +2934,6 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
   const [newUser, setNewUser] = useState({
     username: "",
     phoneNumber: "",
-    password: "",
     departmentID: "",
     role: "normal_user" as "normal_user" | "admin",
     adminLevel: "4"
@@ -2980,11 +2983,10 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
     setDeleteConfirmPhoneNumber(null);
   }, [selectedUser]);
 
-  const createPasswordError = newUser.password.trim() ? validatePasswordPolicy(newUser.password) : null;
   const nextPasswordError = passwordEdit.password.trim() ? validatePasswordPolicy(passwordEdit.password) : null;
   const passwordMismatch = passwordEdit.confirmPassword.length > 0 && passwordEdit.password !== passwordEdit.confirmPassword;
   const canSubmitPassword = Boolean(selectedUser && passwordEdit.password.trim() && passwordEdit.confirmPassword.trim() && !nextPasswordError && !passwordMismatch);
-  const canCreateUser = Boolean(newUser.departmentID && newUser.username.trim() && newUser.phoneNumber.trim() && newUser.password.trim() && !createPasswordError);
+  const canCreateUser = Boolean(newUser.departmentID && newUser.username.trim() && newUser.phoneNumber.trim());
   const deleteConfirmationArmed = Boolean(selectedUser && deleteConfirmPhoneNumber === selectedUser.phoneNumber);
 
   return (
@@ -3062,6 +3064,7 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
               </div>
               <span className="manage-user-stats">
                 <TagPill tone={user.status === "active" ? "success" : user.status === "frozen" ? "warning" : "neutral"}>{userStatusLabel(user.status)}</TagPill>
+                {user.passwordMustChange ? <TagPill tone="warning">待首次改密</TagPill> : null}
                 <small>{user.role === "admin" ? `管理员 L${user.adminLevel ?? "?"}` : "普通用户"}</small>
                 <small>已发布 {user.publishedSkillCount}</small>
                 <small>☆ {user.starCount}</small>
@@ -3083,6 +3086,7 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
             </div>
             <div className="pill-row">
               <TagPill tone={selectedUser.status === "active" ? "success" : selectedUser.status === "frozen" ? "warning" : "neutral"}>{userStatusLabel(selectedUser.status)}</TagPill>
+              {selectedUser.passwordMustChange ? <TagPill tone="warning">待首次改密</TagPill> : null}
               <TagPill tone="info">{selectedUser.role === "admin" ? `管理员 L${selectedUser.adminLevel ?? "?"}` : "普通用户"}</TagPill>
             </div>
             <div className="detail-grid">
@@ -3212,18 +3216,18 @@ function ManageUsersPane({ workspace }: { workspace: P1WorkspaceState }) {
             void workspace.adminData.createAdminUser({
               username: newUser.username.trim(),
               phoneNumber: newUser.phoneNumber.trim(),
-              password: newUser.password,
               departmentID: newUser.departmentID,
               role: newUser.role,
               adminLevel: newUser.role === "admin" ? Number(newUser.adminLevel) : null
             });
             setCreateUserModalOpen(false);
-            setNewUser((current) => ({ ...current, username: "", phoneNumber: "", password: "" }));
+            setNewUser((current) => ({ ...current, username: "", phoneNumber: "" }));
           }}>
             <label className="field"><span>用户名称</span><input value={newUser.username} onChange={(event) => setNewUser((current) => ({ ...current, username: event.target.value }))} autoFocus /></label>
             <label className="field"><span>手机号</span><input value={newUser.phoneNumber} inputMode="tel" autoComplete="tel" onChange={(event) => setNewUser((current) => ({ ...current, phoneNumber: event.target.value }))} /></label>
-            <label className="field"><span>初始密码</span><input value={newUser.password} type="password" autoComplete="new-password" onChange={(event) => setNewUser((current) => ({ ...current, password: event.target.value }))} /></label>
-            <small className={createPasswordError ? "field-hint warning" : "field-hint"}>{createPasswordError ?? passwordPolicyHint}</small>
+            <div className="callout info">
+              新账号初始密码为 EAgentHub123!，首次登录只能用于完成强制改密。
+            </div>
             <label className="field">
               <span>所属部门</span>
               <select value={newUser.departmentID} onChange={(event) => setNewUser((current) => ({ ...current, departmentID: event.target.value }))}>

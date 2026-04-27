@@ -38,6 +38,7 @@ test('real admin workbench contracts expose the approved DTO increments', () => 
   assert.doesNotMatch(user, /readonly userID:/);
   assert.match(user, /readonly departmentPath:\s*string;/);
   assert.match(user, /readonly phoneNumber:\s*string;/);
+  assert.match(user, /readonly passwordMustChange:\s*boolean;/);
   assert.match(user, /readonly lastLoginAt:\s*ISODateTimeString\s*\|\s*null;/);
   assert.match(skill, /readonly description:\s*string;/);
   assert.match(skill, /readonly category:\s*string\s*\|\s*null;/);
@@ -67,6 +68,7 @@ test('real admin workbench read queries and mappers populate enriched fields fro
   assert.match(adminMappers, /adminCount:\s*Number\(row\.admin_count\)/);
   assert.match(adminMappers, /departmentPath:\s*row\.department_path/);
   assert.match(adminMappers, /lastLoginAt:\s*toIsoDateTime\(row\.last_login_at\)/);
+  assert.match(adminMappers, /passwordMustChange:\s*row\.password_must_change/);
   assert.match(adminMappers, /description:\s*row\.description/);
   assert.match(adminMappers, /category:\s*row\.category/);
   assert.match(adminMappers, /currentVersionRiskLevel:\s*row\.current_version_risk_level/);
@@ -114,6 +116,9 @@ test('real admin users pane separates searchable governance from create-user flo
   assert.match(pane, /getAdminUserDepartmentPath\(selectedUser\)/);
   assert.match(pane, /getAdminUserLastLoginAt\(selectedUser\)/);
   assert.match(pane, /createAdminUser/);
+  assert.match(pane, /EAgentHub123!/);
+  assert.match(pane, /待首次改密/);
+  assert.doesNotMatch(pane, /password:\s*newUser\.password/);
   assert.match(pane, /updateAdminUser\(selectedUser\.phoneNumber/);
   assert.match(pane, /changeAdminUserPassword\(selectedUser\.phoneNumber/);
   assert.match(pane, /freezeAdminUser\(selectedUser\.phoneNumber\)/);

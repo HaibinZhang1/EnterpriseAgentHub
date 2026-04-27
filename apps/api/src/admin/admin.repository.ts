@@ -36,6 +36,7 @@ export interface UserRow {
   role: 'normal_user' | 'admin';
   admin_level: number | null;
   status: 'active' | 'frozen' | 'deleted';
+  password_must_change: boolean;
   last_login_at: Date | null;
   published_skill_count: string;
   star_count: string;
@@ -205,6 +206,7 @@ export class AdminRepository {
         u.role,
         u.admin_level,
         u.status,
+        u.password_must_change,
         (SELECT MAX(session.created_at) FROM auth_sessions session WHERE session.user_id = u.id) AS last_login_at,
         (SELECT count(*) FROM skills s WHERE s.author_id = u.id) AS published_skill_count,
         (SELECT count(*) FROM skill_stars ss WHERE ss.user_id = u.id) AS star_count
@@ -229,8 +231,8 @@ export class AdminRepository {
   }): Promise<void> {
     return this.database.query(
       `
-      INSERT INTO users (id, username, phone_number, password_hash, display_name, department_id, role, admin_level, status)
-      VALUES ($1, $2, $3, $4, $2, $5, $6, $7, 'active')
+      INSERT INTO users (id, username, phone_number, password_hash, display_name, department_id, role, admin_level, status, password_must_change)
+      VALUES ($1, $2, $3, $4, $2, $5, $6, $7, 'active', true)
       `,
       [
         input.userID,
@@ -258,6 +260,7 @@ export class AdminRepository {
         u.role,
         u.admin_level,
         u.status,
+        u.password_must_change,
         (SELECT MAX(session.created_at) FROM auth_sessions session WHERE session.user_id = u.id) AS last_login_at,
         (SELECT count(*) FROM skills s WHERE s.author_id = u.id) AS published_skill_count,
         (SELECT count(*) FROM skill_stars ss WHERE ss.user_id = u.id) AS star_count
@@ -307,7 +310,8 @@ export class AdminRepository {
     return this.database.query(
       `
       UPDATE users
-      SET password_hash = $2
+      SET password_hash = $2,
+          password_must_change = false
       WHERE id = $1
       `,
       [input.targetUserID, input.passwordHash],

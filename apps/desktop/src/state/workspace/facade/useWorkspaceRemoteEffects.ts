@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isUnauthenticatedError, p1Client } from "../../../services/p1Client";
+import { isConnectionUnavailableError, isServerUnavailableError, isUnauthenticatedError, p1Client } from "../../../services/p1Client";
 import { desktopBridge } from "../../../services/tauriBridge";
 import { buildGuestBootstrap, localSummaryFromInstall, mergeLocalInstalls } from "../../p1WorkspaceHelpers";
 import type { HandleRemoteError } from "../workspaceTypes";
@@ -12,8 +12,10 @@ export function useWorkspaceRemoteEffects(input: {
     authState: "guest" | "authenticated";
     bootstrap: any;
     setActivePageState: (value: any) => void;
+    setAuthError: (value: string | null) => void;
     setAuthState: (value: "guest" | "authenticated") => void;
     setBootstrap: (value: any) => void;
+    setLoginModalOpen: (value: boolean) => void;
   };
   localSync: {
     localBootstrapRef: { current: any };
@@ -71,6 +73,7 @@ export function useWorkspaceRemoteEffects(input: {
       localSync.setScanTargets(localScanTargets);
       market.setSelectedSkillID(localSkills[0]?.skillID ?? "");
 
+      const savedLoginPreferences = p1Client.storedLoginPreferences();
       if (p1Client.hasStoredSession()) {
         auth.setBootstrap((current: any) => ({
           ...current,
@@ -78,15 +81,46 @@ export function useWorkspaceRemoteEffects(input: {
         }));
         try {
           await hydrateAuthenticatedState(localBootstrap);
+          return;
         } catch (error) {
           if (cancelled) return;
           if (isUnauthenticatedError(error)) {
             p1Client.clearStoredSession();
+            if (!savedLoginPreferences.autoLogin) {
+              auth.setBootstrap(buildGuestBootstrap(localBootstrap, "登录已失效，请重新登录。"));
+              auth.setAuthState("guest");
+              return;
+            }
+          } else {
+            const message = error instanceof Error ? error.message : "当前处于离线模式。";
+            auth.setBootstrap(buildGuestBootstrap(localBootstrap, message));
+            auth.setAuthState("guest");
+            return;
           }
-          const message = error instanceof Error ? error.message : "当前处于离线模式。";
-          auth.setBootstrap(buildGuestBootstrap(localBootstrap, message));
-          auth.setAuthState("guest");
         }
+      }
+
+      if (!savedLoginPreferences.autoLogin) return;
+      auth.setBootstrap((current: any) => ({
+        ...current,
+        connection: { ...current.connection, status: "connecting", lastError: "正在自动登录..." }
+      }));
+      try {
+        const result = await p1Client.loginWithStoredPassword();
+        if (cancelled || !result) return;
+        if (result.status === "password_change_required") {
+          auth.setAuthError("该账号需要完成首次密码修改，请重新登录。");
+          auth.setLoginModalOpen(true);
+          return;
+        }
+        await hydrateAuthenticatedState(localBootstrap);
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "自动登录失败。";
+        auth.setBootstrap(buildGuestBootstrap(localBootstrap, message));
+        auth.setAuthState("guest");
+        auth.setAuthError(message);
+        auth.setLoginModalOpen(!isConnectionUnavailableError(error) && !isServerUnavailableError(error));
       }
     }
 
@@ -95,8 +129,10 @@ export function useWorkspaceRemoteEffects(input: {
       cancelled = true;
     };
   }, [
+    auth.setAuthError,
     auth.setAuthState,
     auth.setBootstrap,
+    auth.setLoginModalOpen,
     hydrateAuthenticatedState,
     localSync.refreshLocalBootstrap,
     localSync.setNotifications,

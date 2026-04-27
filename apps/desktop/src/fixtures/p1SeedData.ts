@@ -387,6 +387,7 @@ export const seedAdminUsers: AdminUser[] = [
     role: "admin",
     adminLevel: 1,
     status: "active",
+    passwordMustChange: false,
     lastLoginAt: "2026-04-11T08:12:00Z",
     publishedSkillCount: 0,
     starCount: 4
@@ -400,6 +401,7 @@ export const seedAdminUsers: AdminUser[] = [
     role: "admin",
     adminLevel: 2,
     status: "active",
+    passwordMustChange: false,
     lastLoginAt: "2026-04-11T07:25:00Z",
     publishedSkillCount: 0,
     starCount: 1
@@ -413,6 +415,7 @@ export const seedAdminUsers: AdminUser[] = [
     role: "normal_user",
     adminLevel: null,
     status: "active",
+    passwordMustChange: false,
     lastLoginAt: "2026-04-10T16:30:00Z",
     publishedSkillCount: 0,
     starCount: 2

@@ -149,7 +149,7 @@ export function useWorkspaceAdminReviewActions(input: {
   );
 
   const createAdminUser = useCallback(
-    async (input: { username: string; phoneNumber: string; password: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }) => {
+    async (input: { username: string; phoneNumber: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }) => {
       requireAuthenticatedAction("admin_users", async () => {
         setAdminUsers(await p1Client.createAdminUser(input));
       });

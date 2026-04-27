@@ -1,7 +1,9 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const SCRYPT_PREFIX = 'scrypt';
+export const INITIAL_PASSWORD = 'EAgentHub123!';
 export const PASSWORD_POLICY_MESSAGE = '密码至少需要 12 位，且必须包含大写字母、小写字母、数字和特殊字符。';
+export const INITIAL_PASSWORD_REUSE_MESSAGE = '新密码不能与初始密码相同。';
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');

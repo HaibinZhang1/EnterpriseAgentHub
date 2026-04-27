@@ -9,6 +9,7 @@ const seedSql = readFileSync(new URL('../src/database/seeds/p1_seed.sql', import
 const migration = readFileSync(new URL('../src/database/migrations/001_p1_base.sql', import.meta.url), 'utf8');
 const publishingMigration = readFileSync(new URL('../src/database/migrations/002_publishing_workflow.sql', import.meta.url), 'utf8');
 const passwordResetMigration = readFileSync(new URL('../src/database/migrations/006_reset_existing_user_passwords.sql', import.meta.url), 'utf8');
+const initialPasswordMigration = readFileSync(new URL('../src/database/migrations/009_initial_password_challenge.sql', import.meta.url), 'utf8');
 const packageDownloadService = readFileSync(new URL('../src/skills/package-download.service.ts', import.meta.url), 'utf8');
 const packageDownloadController = readFileSync(new URL('../src/skills/package-download.controller.ts', import.meta.url), 'utf8');
 const publishingService = readFileSync(new URL('../src/publishing/publishing-publication.service.ts', import.meta.url), 'utf8');
@@ -39,7 +40,10 @@ test('P1 API contracts preserve symlink-first copy fallback fields', () => {
   assert.match(sharedContracts, /PrecheckOverrideCommentRequired: "precheck_override_comment_required"/);
   assert.match(sharedContracts, /ReviewLockExpired: "review_lock_expired"/);
   assert.match(sharedContracts, /adminLevel/);
+  assert.match(sharedContracts, /authCompleteInitialPasswordChange: "\/auth\/complete-initial-password-change"/);
+  assert.match(sharedContracts, /status: "password_change_required"/);
   assert.match(sharedContracts, /adminUserPassword: "\/admin\/users\/:phoneNumber\/password"/);
+  assert.match(sharedContracts, /readonly passwordMustChange: boolean/);
   assert.match(sharedContracts, /readonly phoneNumber: string/);
   assert.match(sharedContracts, /readonly username: string/);
   assert.doesNotMatch(sharedContracts, /interface CurrentUser \{[\s\S]*readonly userID:/);
@@ -66,8 +70,11 @@ test('P1 seed covers full, restricted, and delisted skill scenarios', () => {
   assert.match(publishingService, /publishSubmission/);
   assert.match(publishingService, /refresh_skill_search_document/);
   assert.match(seedSql, /eagenthub20260422fixedsalt000001/);
+  assert.match(seedSql, /password_must_change/);
   assert.match(passwordResetMigration, /UPDATE users/);
   assert.match(passwordResetMigration, /UPDATE auth_sessions/);
+  assert.match(initialPasswordMigration, /password_must_change BOOLEAN NOT NULL DEFAULT false/);
+  assert.match(initialPasswordMigration, /auth_password_change_challenges/);
 });
 
 test('download-ticket points at a real package download URL with matching seed package metadata', () => {

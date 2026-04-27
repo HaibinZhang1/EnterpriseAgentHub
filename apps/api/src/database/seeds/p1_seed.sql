@@ -16,7 +16,7 @@ SET
   level = EXCLUDED.level,
   status = EXCLUDED.status;
 
-INSERT INTO users (id, username, phone_number, password_hash, display_name, department_id, role, admin_level, status)
+INSERT INTO users (id, username, phone_number, password_hash, display_name, department_id, role, admin_level, status, password_must_change)
 VALUES
   (
     'u_001',
@@ -27,7 +27,8 @@ VALUES
     'dept_frontend',
     'normal_user',
     NULL,
-    'active'
+    'active',
+    true
   ),
   (
     'u_admin_l1',
@@ -38,7 +39,8 @@ VALUES
     'dept_company',
     'admin',
     1,
-    'active'
+    'active',
+    true
   ),
   (
     'u_admin_l2_eng',
@@ -49,7 +51,8 @@ VALUES
     'dept_engineering',
     'admin',
     2,
-    'active'
+    'active',
+    true
   ),
   (
     'u_admin_l3_front',
@@ -60,7 +63,8 @@ VALUES
     'dept_frontend',
     'admin',
     3,
-    'active'
+    'active',
+    true
   ),
   (
     'u_author_frontend',
@@ -71,7 +75,8 @@ VALUES
     'dept_frontend',
     'normal_user',
     NULL,
-    'active'
+    'active',
+    true
   ),
   (
     'u_author_design',
@@ -82,7 +87,8 @@ VALUES
     'dept_design',
     'normal_user',
     NULL,
-    'active'
+    'active',
+    true
   ),
   (
     'u_author_ops',
@@ -93,7 +99,8 @@ VALUES
     'dept_ops',
     'normal_user',
     NULL,
-    'active'
+    'active',
+    true
   )
 ON CONFLICT (id) DO UPDATE
 SET
@@ -104,7 +111,8 @@ SET
   department_id = EXCLUDED.department_id,
   role = EXCLUDED.role,
   admin_level = EXCLUDED.admin_level,
-  status = EXCLUDED.status;
+  status = EXCLUDED.status,
+  password_must_change = EXCLUDED.password_must_change;
 
 WITH upsert_skill AS (
   INSERT INTO skills (skill_id, display_name, description, author_id, department_id, status, visibility_level, category)

@@ -32,7 +32,7 @@ export function createAdminClient() {
       return requestJSON<AdminUser[]>(P1_API_ROUTES.adminUsers);
     },
 
-    async createAdminUser(input: { username: string; phoneNumber: string; password: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]> {
+    async createAdminUser(input: { username: string; phoneNumber: string; departmentID: string; role: "normal_user" | "admin"; adminLevel: number | null }): Promise<AdminUser[]> {
       return requestJSON<AdminUser[]>(P1_API_ROUTES.adminUsers, {
         method: "POST",
         body: JSON.stringify(input)
